@@ -53,6 +53,79 @@ export function urgencyNote(vacancy: Vacancy, urgency: Urgency, today: ISODate):
   return days === 0 ? 'Starts today — nobody on it' : days === 1 ? 'Starts tomorrow — nobody on it' : `Starts in ${days} days — nobody on it`
 }
 
+/* ------------------------------------------------------------------
+   Is this person available, and if not, from when?
+   ------------------------------------------------------------------ */
+
+/** One person, one shift per vacancy per day.
+ *
+ *  Overlapping times are a separate check and catch most of it, but not all:
+ *  a replacement written across a range, or a standing arrangement filled
+ *  twice, can land somebody on the same job twice in one day. On the client's
+ *  sheet that reads as two people, so it is forbidden outright — being at two
+ *  DIFFERENT jobs in one day stays allowed, that is a normal split shift. */
+export const alreadyOnVacancy = (roster: RosterEntry[], vacancyId: string, date: ISODate, workerId: string) =>
+  roster.some(r => r.vacancyId === vacancyId && r.date === date && r.workerId === workerId && r.outcome !== 'cancelled')
+
+/** A course day is a standing weekly commitment, not a day off: it repeats
+ *  without anybody entering it again, and the person is simply not offered. */
+export const isCourseDay = (worker: Worker, date: ISODate) => worker.courseDays.includes(weekdayOfDate(date))
+
+export type DayBlock = 'free' | 'leave' | 'course' | 'busy' | 'duplicate'
+
+/** Why this person cannot take this day — or 'free' if they can. */
+export function blockOn(worker: Worker, date: ISODate, vacancyId: string, roster: RosterEntry[], leaveDays: Leave[]): DayBlock {
+  if (leaveDays.some(l => l.workerId === worker.id && l.date === date)) return 'leave'
+  if (isCourseDay(worker, date)) return 'course'
+  if (alreadyOnVacancy(roster, vacancyId, date, worker.id)) return 'duplicate'
+  return assignmentOn(worker.id, date, null, roster) ? 'busy' : 'free'
+}
+
+export type Availability = {
+  days: ISODate[]
+  free: ISODate[]
+  taken: ISODate[]
+  /** The first day from which every remaining day is free. Null when they are
+   *  never free in the window — the answer the office actually wants is not
+   *  "busy" but "from when". */
+  freeFrom: ISODate | null
+  fullyFree: boolean
+  /** Which kind of block, counted, so the row can say what is in the way. */
+  reasons: Record<Exclude<DayBlock, 'free'>, number>
+}
+
+/** How a person sits against a run of days — the whole vacancy, or the days a
+ *  standing arrangement would actually use. */
+export function availabilityOver(worker: Worker, days: ISODate[], vacancyId: string, roster: RosterEntry[], leaveDays: Leave[]): Availability {
+  const blocks = days.map(date => ({ date, block: blockOn(worker, date, vacancyId, roster, leaveDays) }))
+  const free = blocks.filter(b => b.block === 'free').map(b => b.date)
+  const taken = blocks.filter(b => b.block !== 'free').map(b => b.date)
+  /* Walk back from the end: the answer is the earliest day after which
+     nothing is in the way. */
+  let freeFrom: ISODate | null = null
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    if (blocks[i].block !== 'free') break
+    freeFrom = blocks[i].date
+  }
+  const reasons = { leave: 0, course: 0, busy: 0, duplicate: 0 }
+  for (const b of blocks) if (b.block !== 'free') reasons[b.block]++
+  return { days, free, taken, freeFrom, fullyFree: taken.length === 0, reasons }
+}
+
+/** The same thing in a sentence, because a list of dates is not an answer. */
+export function availabilityLabel(a: Availability): string {
+  if (!a.days.length) return 'No working days in this period'
+  if (a.fullyFree) return `Free all ${a.days.length} ${a.days.length === 1 ? 'day' : 'days'}`
+  if (!a.free.length) return 'Busy every day of this period'
+  const parts: string[] = []
+  if (a.reasons.duplicate) parts.push(`${a.reasons.duplicate} already on this job`)
+  if (a.reasons.busy) parts.push(`${a.reasons.busy} on other work`)
+  if (a.reasons.leave) parts.push(`${a.reasons.leave} on leave`)
+  if (a.reasons.course) parts.push(`${a.reasons.course} at a course`)
+  const taken = `${a.taken.length} of ${a.days.length} taken (${parts.join(', ')})`
+  return a.freeFrom ? `Free from ${formatDate(a.freeFrom)} · ${taken}` : `Never free for a whole run · ${taken}`
+}
+
 export function assignmentOn(workerId:string, date:ISODate, _unused:unknown, roster:RosterEntry[], _vacancies?:unknown): AssignmentInfo|null {
   /* One place to ask "what is this person doing that day", and it reads
      shifts — the only record of work there is now. */
@@ -72,6 +145,7 @@ export function availableWorkers(workers:Worker[], date:ISODate, roster:RosterEn
    ------------------------------------------------------------------ */
 import type { Demand, ShiftOutcome } from './types.ts'
 import { minutesOf } from './types.ts'
+import { formatDate, weekdayOf as weekdayOfDate } from './types.ts'
 
 /** A shift stops counting as coverage once it is cancelled or nobody came. */
 const COUNTS_AS_COVER: ShiftOutcome[] = ['planned', 'confirmed', 'worked', 'left_early']
@@ -299,6 +373,5 @@ export function describeSchedule(vacancy: VacancyType): string[] {
     : `People: set per day (usually ${s.headcount.typical})`)
 
   lines.push(vacancy.places.length ? `Places: ${vacancy.places.map(p => p.name).join(' · ')} — sections inside them are typed per day` : 'Places: none — the site is ordered as a whole')
-  lines.push(s.plannedBy === 'client' ? 'Planned by: the client — we mirror their table' : 'Planned by: us')
   return lines
 }

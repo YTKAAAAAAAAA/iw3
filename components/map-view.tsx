@@ -4,13 +4,24 @@ import Link from 'next/link'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { Minus, Plus } from 'lucide-react'
-import { AppShell, Avatar, Badge, PageHeading, Panel, StateBlock } from './app-shell'
+import { AppShell, Badge, PageHeading, Panel, StateBlock } from './app-shell'
 import { assignments, leaves, roster, vacancies, workers } from '@/lib/mock-data'
 import { dayStatus } from '@/lib/derive'
 import { travelFor, withinDrive, TRAVEL_COMPUTED_AT, TRAVEL_PROFILE } from '@/lib/travel'
 import { formatDate, TODAY } from '@/lib/types'
 
-const STATE_COLOUR: Record<string, string> = { free: '#4f9d6d', leave: '#c98a4b', working: '#5b82c4' }
+/* Leaflet writes colours straight into SVG attributes, so it cannot take a CSS
+   variable — it has to be handed a resolved string. Reading the token at draw
+   time keeps the map on the same palette as the rest of the product instead of
+   pinning three hex values that drift away from it. */
+const token = (name: string, fallback: string) => {
+  if (typeof document === 'undefined') return fallback
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
+}
+const stateColour = (state: string) => token(
+  state === 'free' ? '--status-free' : state === 'leave' ? '--status-leave' : '--status-working',
+  state === 'free' ? '#047857' : state === 'leave' ? '#b45309' : '#1d4ed8',
+)
 const STATE_LABEL: Record<string, string> = { free: 'Free', leave: 'On leave', working: 'Working' }
 type Filter = 'all' | 'free' | 'working'
 
@@ -101,18 +112,22 @@ export function MapPanel({ vacancyId }: { vacancyId?: string }) {
     layer.clearLayers()
     markersRef.current.clear()
 
-    L.marker([site.lat, site.lon], {
+    /* A tooltip is a hover affordance and announces to nobody. Leaflet renders
+       these as focusable elements, so without a name a screen reader reads the
+       map as a row of unlabelled buttons. */
+    const sitePin = L.marker([site.lat, site.lon], {
       icon: L.divIcon({ className: 'site-pin', html: '<span></span>', iconSize: [18, 18], iconAnchor: [9, 9] }),
       zIndexOffset: 1000,
     }).bindTooltip(`<strong>${site.title}</strong><br>${site.address}`).addTo(layer)
+    sitePin.getElement()?.setAttribute('aria-label', `${site.title}, ${site.address}`)
 
     const place = (workerId: string, travel: { km: number; minutes: number }, isInside: boolean) => {
       const worker = workerById.get(workerId)
       if (!worker?.lat || !worker?.lon) return
       const state = stateOf(workerId)
       const marker = L.circleMarker([worker.lat, worker.lon], {
-        radius: 8, weight: 2.5, color: '#ffffff',
-        fillColor: STATE_COLOUR[state],
+        radius: 8, weight: 2.5, color: token('--card', '#ffffff'),
+        fillColor: stateColour(state),
         fillOpacity: isInside ? 1 : 0.35, opacity: isInside ? 1 : 0.4,
       })
       marker.bindTooltip(
@@ -120,6 +135,12 @@ export function MapPanel({ vacancyId }: { vacancyId?: string }) {
         { direction: 'top' })
       marker.on('click', () => setSelected(workerId))
       marker.addTo(layer)
+      const el = marker.getElement()
+      if (el) {
+        el.setAttribute('role', 'button')
+        el.setAttribute('aria-label',
+          `${worker.fullName}, ${travel.km} km, ${travel.minutes} min by car, ${STATE_LABEL[state]}`)
+      }
       markersRef.current.set(workerId, marker)
     }
     inside.forEach(x => place(x.workerId, x.travel, true))
@@ -129,7 +150,7 @@ export function MapPanel({ vacancyId }: { vacancyId?: string }) {
        by road distance. Faint on purpose, and the legend says so. */
     if (!ringRef.current) {
       ringRef.current = L.circle([site.lat, site.lon], { radius: radius * 1000, interactive: false,
-        color: '#5b82c4', weight: 2, dashArray: '7 6', fillColor: '#5b82c4', fillOpacity: 0.07 }).addTo(map)
+        color: token('--primary', '#2563eb'), weight: 2, dashArray: '7 6', fillColor: token('--primary', '#2563eb'), fillOpacity: 0.07 }).addTo(map)
     } else {
       ringRef.current.setLatLng([site.lat, site.lon]).setRadius(radius * 1000)
     }
@@ -254,7 +275,6 @@ export function MapPanel({ vacancyId }: { vacancyId?: string }) {
             return (
               <button key={workerId} className={`distance-row ${selected === workerId ? 'selected' : ''}`}
                 onClick={() => setSelected(workerId)}>
-                <Avatar initials={worker.initials} tone="blue" small />
                 <span><strong>{worker.fullName}</strong><small>{travel.km} km · {travel.minutes} min · {worker.city}{worker.hasCar ? ' · car' : ''}</small></span>
                 <Badge tone={state === 'free' ? 'green' : state === 'leave' ? 'orange' : 'blue'}>{STATE_LABEL[state]}</Badge>
               </button>
@@ -269,9 +289,9 @@ export function MapPanel({ vacancyId }: { vacancyId?: string }) {
       </div>
 
       <p className="map-legend-note">
-        <span><i style={{ background: STATE_COLOUR.free }} />Free</span>
-        <span><i style={{ background: STATE_COLOUR.leave }} />On leave</span>
-        <span><i style={{ background: STATE_COLOUR.working }} />Working</span>
+        <span><i style={{ background: 'var(--status-free)' }} />Free</span>
+        <span><i style={{ background: 'var(--status-leave)' }} />On leave</span>
+        <span><i style={{ background: 'var(--status-working)' }} />Working</span>
         <span className="ring-note">The dashed ring is straight-line {radius} km, shown only for scale — membership is decided by road distance.</span>
       </p>
       <p className="map-note">

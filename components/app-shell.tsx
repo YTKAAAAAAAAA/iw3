@@ -1,15 +1,14 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useEffect, useId, useState } from 'react'
-import { BriefcaseBusiness, CalendarDays, CheckSquare, ChevronRight, CircleHelp, Clock3, Command, LayoutDashboard, LogOut, Map, Menu, Moon, PanelLeft, Plus, Search, Settings, Sun, Users, X } from 'lucide-react'
-import { mockData } from '@/lib/mock-data'
+import { useEffect, useId, useRef, useState } from 'react'
+import { BriefcaseBusiness, CalendarDays, ChevronRight, Clock3, Command, LayoutDashboard, Map, Menu, Moon, PanelLeft, Plus, Search, Settings, Sun, Users, X } from 'lucide-react'
 import { formatDate, parseClock, TODAY } from '@/lib/types'
 import type { ReactNode } from 'react'
 import { Brand } from './logo'
+import { SearchDialog } from './search-dialog'
 
-const nav=[['Overview','/',LayoutDashboard],['People','/people',Users],['Vacancies','/vacancies',BriefcaseBusiness],['Hours','/hours',Clock3],['Tasks','/tasks',CheckSquare],['Companies','/companies',Settings],['Map','/map',Map]] as const
-export function Avatar({ initials, tone='blue', small=false }:{initials:string;tone?:string;small?:boolean}){return <span className={`avatar avatar-${tone} ${small?'avatar-small':''}`}>{initials}</span>}
+const nav=[['Overview','/',LayoutDashboard],['People','/people',Users],['Vacancies','/vacancies',BriefcaseBusiness],['Hours','/hours',Clock3],['Companies','/companies',Settings],['Map','/map',Map]] as const
 export function Badge({children,tone='neutral'}:{children:ReactNode;tone?:string}){return <span className={`badge badge-${tone}`}>{children}</span>}
 export function Panel({children,className=''}:{children:ReactNode;className?:string}){return <section className={`panel ${className}`}>{children}</section>}
 export function StateBlock({kind='empty',title,description,action}:{kind?:'loading'|'error'|'empty';title:string;description?:string;action?:ReactNode}){return <div className={`state-block ${kind}`}><div className="state-icon">{kind==='loading'?'…':kind==='error'?'!':'—'}</div><strong>{title}</strong>{description&&<p>{description}</p>}{action}</div>}
@@ -32,14 +31,23 @@ const publishTheme = (next: Theme) => { themeValue = next; themeSubscribers.forE
 
 function useThemeSetting() {
   const [theme, setTheme] = useState<Theme>(themeValue)
+  /* Whether the stored choice has been read yet. Until it has, the class
+     painted by the layout's blocking script is the only truth about this
+     browser's theme, and React must not contradict it. */
+  const [adopted, setAdopted] = useState(false)
   /* The colours live on <html>, set by the inline script in the layout before
      the first paint and kept in step here. Keeping them on the shell's own
      div would repaint only after hydration — and would leave the page behind
      the shell in the other theme. */
   useEffect(() => {
+    /* Skipped until the stored choice is in. `themeValue` starts at 'dark'
+       because the server has to render something, so without this guard the
+       first pass repainted a stored-light page dark and the effect below
+       flipped it back one tick later — a dark flash on every page load. */
+    if (!adopted) return
     document.documentElement.classList.toggle('theme-dark', theme === 'dark')
     document.documentElement.classList.toggle('theme-light', theme === 'light')
-  }, [theme])
+  }, [theme, adopted])
   useEffect(() => {
     themeSubscribers.add(setTheme)
     /* Read the stored choice after mounting, never during render: the server
@@ -47,9 +55,24 @@ function useThemeSetting() {
        hydration mismatch. */
     let stored: string | null = null
     try { stored = window.localStorage.getItem(THEME_KEY) } catch { stored = null }
-    if ((stored === 'dark' || stored === 'light') && stored !== themeValue) publishTheme(stored)
-    else setTheme(themeValue)
-    return () => { themeSubscribers.delete(setTheme) }
+    if (stored === 'dark' || stored === 'light') {
+      if (stored !== themeValue) publishTheme(stored)
+      else setTheme(themeValue)
+      setAdopted(true)
+      return () => { themeSubscribers.delete(setTheme) }
+    }
+    /* Nobody has chosen: follow the system rather than imposing an appearance.
+       Somebody working on a light desktop all day should not be handed a dark
+       app because the mock happened to be drawn dark — the in-app switch is an
+       override, not the source of truth. */
+    const system = window.matchMedia('(prefers-color-scheme: dark)')
+    const adopt = () => { let saved: string | null = null
+      try { saved = window.localStorage.getItem(THEME_KEY) } catch { saved = null }
+      if (saved !== 'dark' && saved !== 'light') publishTheme(system.matches ? 'dark' : 'light') }
+    adopt()
+    setAdopted(true)
+    system.addEventListener('change', adopt)
+    return () => { system.removeEventListener('change', adopt); themeSubscribers.delete(setTheme) }
   }, [])
   const choose = (next: Theme) => {
     try { window.localStorage.setItem(THEME_KEY, next) } catch { /* private window — the choice still holds for this session */ }
@@ -74,6 +97,35 @@ export function TimeField({value,onChange,label,className=''}:{value:string|null
     onKeyDown={e=>{if(e.key==='Enter')(e.target as HTMLInputElement).blur()}} />
 }
 
-export function AppShell({children,title}:{children:ReactNode;title?:string}){const path=usePathname(); const [theme,setTheme]=useThemeSetting(); const [mobile,setMobile]=useState(false); const [syncing,setSyncing]=useState(false); const active=nav.find(n=>n[1]===path)?.[0] || (path.startsWith('/people')?'People':path.startsWith('/vacancies')?'Vacancies':'Workspace'); const refresh=()=>{setSyncing(true); window.setTimeout(()=>setSyncing(false),900)}; return <div className="app-shell"><aside className={`sidebar ${mobile?'open':''}`}><div className="brand-row"><Brand /><button className="icon-button sidebar-hide" onClick={()=>setMobile(false)} aria-label="Close navigation"><PanelLeft /></button></div><nav className="main-nav"><p className="nav-label">Workspace</p>{nav.map(([name,href,Icon])=><Link key={href} href={href} className={`nav-item ${active===name?'active':''}`} onClick={()=>setMobile(false)}><Icon />{name}{name==='Tasks'&&<span className="nav-count">{mockData.tasks.filter(t=>!t.done).length}</span>}</Link>)}</nav><div className="sidebar-bottom"><Link className="nav-item" href="/sync"><Command />Sync sources</Link><Link className="nav-item" href="/login"><LogOut />Sign out</Link><button className="nav-item" onClick={()=>setTheme(theme==='dark'?'light':'dark')}>{theme==='dark'?<Sun/>:<Moon/>}{theme==='dark'?'Light theme':'Dark theme'}</button><button className="nav-item"><CircleHelp />Help & support</button><div className="user-mini"><Avatar initials="MV" tone="purple" small/><span><strong>Marit van Dijk</strong><small>Admin workspace</small></span></div></div></aside>{mobile&&<button className="mobile-scrim" onClick={()=>setMobile(false)} aria-label="Close navigation"/>}<main className="main-area"><header className="topbar"><button className="mobile-menu icon-button" onClick={()=>setMobile(true)} aria-label="Open navigation"><Menu/></button><div className="breadcrumbs"><span>Workspace</span><ChevronRight/><strong>{title||active}</strong></div><div className="top-actions"><button className={`sync-button ${syncing?'syncing':''}`} onClick={refresh}>{syncing?'Syncing…':'Synced 28 min ago'}</button><button className="icon-button"><Search/></button><Avatar initials="MJ" tone="purple" small/></div></header>{children}</main></div>}
+/* ------------------------------------------------------------------
+   Leaving.
+
+   React takes a closed dialog out of the DOM on the spot, so there is
+   nothing left to animate — an exit has to be asked for first and the
+   unmount deferred until it has played. 150ms against the 200ms entrance:
+   leaving should be quicker than arriving, or the interface feels reluctant
+   to let go of a decision the user has already made.
+   ------------------------------------------------------------------ */
+export const EXIT_MS = 150
+export function useExit(done: () => void) {
+  const [closing, setClosing] = useState(false)
+  const timer = useRef<number | undefined>(undefined)
+  useEffect(() => () => window.clearTimeout(timer.current), [])
+  const close = () => {
+    if (closing) return   /* a second click must not queue a second unmount */
+    setClosing(true)
+    /* Reset as well as finish: a dialog whose parent stays mounted (the
+       company editor closes by clearing its own state) would otherwise
+       reopen already wearing the leaving class. */
+    timer.current = window.setTimeout(() => { done(); setClosing(false) }, EXIT_MS)
+  }
+  return { closing, close }
+}
+
+export function AppShell({children,title}:{children:ReactNode;title?:string}){const path=usePathname(); const [theme,setTheme]=useThemeSetting(); const [mobile,setMobile]=useState(false); const [collapsed,setCollapsed]=useState(false); const [syncing,setSyncing]=useState(false); const [searchOpen,setSearchOpen]=useState(false); const active=nav.find(n=>n[1]===path)?.[0] || (path.startsWith('/people')?'People':path.startsWith('/vacancies')?'Vacancies':'Workspace'); const refresh=()=>{setSyncing(true); window.setTimeout(()=>setSyncing(false),900)};
+  /* ⌘K/Ctrl+K opens search from anywhere, matching every other app this
+     audience already uses one in. */
+  useEffect(()=>{const onKey=(e:KeyboardEvent)=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();setSearchOpen(true)}}; window.addEventListener('keydown',onKey); return ()=>window.removeEventListener('keydown',onKey)},[])
+  return <div className={`app-shell ${collapsed?'sidebar-collapsed':''}`}><aside className={`sidebar ${mobile?'open':''} ${collapsed?'collapsed':''}`}><div className="brand-row"><Brand /><button className="icon-button sidebar-hide" onClick={()=>{setMobile(false);setCollapsed(true)}} aria-label="Hide navigation"><PanelLeft /></button></div><nav className="main-nav"><p className="nav-label">Workspace</p>{nav.map(([name,href,Icon])=><Link key={href} href={href} className={`nav-item ${active===name?'active':''}`} onClick={()=>setMobile(false)}><Icon />{name}</Link>)}</nav><div className="sidebar-bottom"><Link className="nav-item" href="/sync"><Command />Sync sources</Link><button className="nav-item" onClick={()=>setTheme(theme==='dark'?'light':'dark')}>{theme==='dark'?<Sun/>:<Moon/>}{theme==='dark'?'Light theme':'Dark theme'}</button></div></aside>{mobile&&<button className="mobile-scrim" onClick={()=>setMobile(false)} aria-label="Close navigation"/>}<main className="main-area"><header className="topbar"><button className="desktop-sidebar-toggle icon-button" onClick={()=>setCollapsed(false)} aria-label="Show navigation"><PanelLeft/></button><button className="mobile-menu icon-button" onClick={()=>setMobile(true)} aria-label="Open navigation"><Menu/></button><div className="breadcrumbs"><span>Workspace</span><ChevronRight/><strong>{title||active}</strong></div><div className="top-actions"><button className={`sync-button ${syncing?'syncing':''}`} onClick={refresh}>{syncing?'Syncing…':'Synced 28 min ago'}</button><button className="icon-button" aria-label="Search" onClick={()=>setSearchOpen(true)}><Search/></button></div></header>{children}</main><SearchDialog open={searchOpen} onClose={()=>setSearchOpen(false)}/></div>}
 export const dateLabel=(date:string)=>formatDate(date)
 export { TODAY }

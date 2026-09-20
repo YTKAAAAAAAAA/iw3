@@ -1,6 +1,16 @@
 export type ISODate = string
 export type ISODateTime = string
-export type Worker = { id:string; flexpediaId:number|null; manatalCandidateId:number|null; initials:string; firstName:string; insertion:string|null; lastName:string; fullName:string; gender:'m'|'f'|null; birthDate:ISODate|null; street:string|null; streetNumber:string|null; streetNumberAddition:string|null; postCode:string|null; city:string|null; residenceCountry:string|null; nationality:string|null; phone:string|null; phoneCountry:string|null; mobile:string|null; email:string; lat:number|null; lon:number|null; geocodedAt:ISODateTime|null; notes:string; hasCar:boolean; status:'active'|'dismissed'; dismissedAt:ISODate|null; companyAccess:string[]; manatalLink:'linked'|'not_found'|'ambiguous'; cvUrl:string|null }
+/** One person.
+ *
+ *  `courseDays` are the weekdays they are at a course (the old site's
+ *  `fixed_course_days`): a standing commitment, not a day off, so it repeats
+ *  every week and nobody has to enter it again. Those weekdays are simply not
+ *  offered when staffing.
+ *
+ *  `hasVog` records whether a Verklaring Omtrent het Gedrag is on file. Some
+ *  clients will not let anybody on site without one, so the office needs the
+ *  answer on the person rather than buried in a document folder. */
+export type Worker = { id:string; flexpediaId:number|null; manatalCandidateId:number|null; initials:string; firstName:string; insertion:string|null; lastName:string; fullName:string; gender:'m'|'f'|null; birthDate:ISODate|null; street:string|null; streetNumber:string|null; streetNumberAddition:string|null; postCode:string|null; city:string|null; residenceCountry:string|null; nationality:string|null; phone:string|null; phoneCountry:string|null; mobile:string|null; email:string; lat:number|null; lon:number|null; geocodedAt:ISODateTime|null; notes:string; hasCar:boolean; hasVog:boolean; courseDays:Weekday[]; status:'active'|'dismissed'; dismissedAt:ISODate|null; companyAccess:string[]; manatalLink:'linked'|'not_found'|'ambiguous'; cvUrl:string|null }
 export type Company = { id:string; name:string; contactPerson:string|null; phone:string|null; notes:string|null; logoUrl:string|null }
 /** A hall or site inside a vacancy — Slego, Conakryweg. Added and removed by
  *  hand as the client opens and closes them. */
@@ -63,10 +73,7 @@ export type SchedulePattern = {
   /** How far ahead the plan is normally known. Ziggo Dome publishes a
    *  fortnight; the warehouse orders the evening before. This only chooses the
    *  default view — nothing is forbidden either way. */
-  horizon:'day'|'week'|'month' 
-  /** Who writes the plan. The client sends theirs and we mirror it, or we
-   *  build it ourselves. */
-  plannedBy:'client'|'agency'
+  horizon:'day'|'week'|'month'
 }
 
 export type Vacancy = { id:string; title:string; companyId:string; address:string; lat:number|null; lon:number|null; description:string; startDate:ISODate; endDate:ISODate|null; trackHoursManually:boolean; schedule:SchedulePattern; places:VacancyPlace[];
@@ -167,10 +174,7 @@ export type Demand = {
 }
 export type Leave = { id:string; workerId:string; date:ISODate; reason:string; paidLeave:boolean }
 export type HoursEntry = { id:string; workerId:string; vacancyId:string; date:ISODate; hours:number }
-export type TaskColumn = { id:string; name:string; position:number }
-export type Task = { id:string; columnId:string; position:number; text:string; startDate:ISODate|null; dueDate:ISODate|null; done:boolean }
 export type SyncState = { source:'flexpedia'|'manatal'; lastSyncAt:ISODateTime|null; status:'idle'|'running'|'error'; error:string|null }
-export type CurrentUser = { id:string; fullName:string; email:string }
 export type DayState = 'working'|'leave'|'free'
 export const TODAY: ISODate = '2024-06-18'
 export const ACTIVE_STATUSES = ['active'] as const
@@ -179,7 +183,7 @@ export type RoadDistance = { km:number; minutes:number }
 export type AssignmentInfo = { vacancyId:string; placeId:string|null; section:string|null; assignmentId:string }
 export type SyncResult = { source:SyncState['source']; added:number; updated:number; missingWorkerIds:string[] }
 export type ManatalCandidate = { id:number; name:string; email:string }
-export type AppData = { workers:Worker[]; companies:Company[]; vacancies:Vacancy[]; standing:StandingAssignment[]; roster:RosterEntry[]; leaves:Leave[]; hours:HoursEntry[]; columns:TaskColumn[]; tasks:Task[]; sync:SyncState[]; currentUser:CurrentUser }
+export type AppData = { workers:Worker[]; companies:Company[]; vacancies:Vacancy[]; standing:StandingAssignment[]; roster:RosterEntry[]; leaves:Leave[]; hours:HoursEntry[]; sync:SyncState[] }
 export const isoDate = (date: Date) => date.toISOString().slice(0,10)
 export const addDays = (date: ISODate, amount:number) => { const d = new Date(`${date}T12:00:00Z`); d.setUTCDate(d.getUTCDate()+amount); return isoDate(d) }
 export const formatDate = (value: ISODate | ISODateTime | null) => value ? new Intl.DateTimeFormat('en-GB',{day:'numeric',month:'short',year:'numeric'}).format(new Date(value.includes('T') ? value : `${value}T12:00:00`)) : '—'
@@ -189,8 +193,6 @@ export const companyById = (companies:Company[], id:string) => companies.find(c=
 export const workerById = (workers:Worker[], id:string) => workers.find(w=>w.id===id)
 export const vacancyById = (vacancies:Vacancy[], id:string) => vacancies.find(v=>v.id===id)
 export const candidateStatusLabel = (status:DayState) => status === 'working' ? 'Working' : status === 'leave' ? 'On leave' : 'Free'
-export const taskDateLabel = (task:Task, today:ISODate=TODAY) => { if (task.done) return 'Completed'; if (task.startDate && task.startDate > today) return `Starts ${formatDate(task.startDate)}`; if (!task.dueDate) return ''; const diff = Math.round((new Date(`${task.dueDate}T12:00:00`).getTime()-new Date(`${today}T12:00:00`).getTime())/86400000); if(diff<0) return `Overdue · ${formatDate(task.dueDate)}`; if(diff===0) return 'Due today'; if(diff===1) return 'Due tomorrow'; return `Due ${formatDate(task.dueDate)}` }
-export const taskDateTone = (task:Task, today:ISODate=TODAY) => task.done ? 'neutral' : task.dueDate && task.dueDate < today ? 'red' : task.dueDate && task.dueDate <= addDays(today,1) ? 'orange' : 'neutral'
 export const isoWeek = (date:ISODate) => { const d=new Date(`${date}T12:00:00Z`); const day=(d.getUTCDay()+6)%7; d.setUTCDate(d.getUTCDate()-day+3); const first=new Date(Date.UTC(d.getUTCFullYear(),0,4)); return { year:d.getUTCFullYear(), week:1+Math.round(((d.getTime()-first.getTime())/86400000-3+((first.getUTCDay()+6)%7))/7) } }
 export const weekDates = (year:number, week:number) => { const jan4=new Date(Date.UTC(year,0,4)); const monday=new Date(jan4); monday.setUTCDate(jan4.getUTCDate()-((jan4.getUTCDay()+6)%7)+(week-1)*7); return Array.from({length:7},(_,i)=>{ const d=new Date(monday); d.setUTCDate(monday.getUTCDate()+i); return isoDate(d) }) }
 

@@ -10,7 +10,7 @@ const vacancy = (id: string, startDate: string, endDate: string | null = null): 
   startDate, endDate, trackHoursManually: false, places: [], carOnly: false,
   defaultHours: null, projectCode: null,
   schedule: { weekdays: [], start: { kind: 'fixed', time: '08:00' }, end: { kind: 'fixed', time: '16:00' },
-    headcount: { kind: 'fixed', count: 1 }, horizon: 'week', plannedBy: 'agency' },
+    headcount: { kind: 'fixed', count: 1 }, horizon: 'week' },
 })
 const shift = (vacancyId: string, date: string, workerId: string | null): RosterEntry => ({
   id: `r-${vacancyId}-${date}`, vacancyId, date, placeId: null, section: null, workerId,

@@ -13,7 +13,7 @@ const worker = (id: string, firstName: string, lastName: string, insertion: stri
   fullName: [firstName, insertion, lastName].filter(Boolean).join(' '), gender: null, birthDate: null,
   street: null, streetNumber: null, streetNumberAddition: null, postCode: null, city: null,
   residenceCountry: null, nationality: null, phone: null, phoneCountry: null, mobile: null,
-  email: `${id}@example.com`, lat: null, lon: null, geocodedAt: null, notes: '', hasCar: true,
+  email: `${id}@example.com`, lat: null, lon: null, geocodedAt: null, notes: '', hasCar: true, hasVog: true, courseDays: [],
   status: 'active', dismissedAt: null, companyAccess: ['c-1'], manatalLink: 'linked', cvUrl: null,
 })
 const shift = (workerId: string, date: string, outcome: RosterEntry['outcome'] = 'planned'): RosterEntry => ({
@@ -29,7 +29,7 @@ const vacancy = (defaultHours: number | null): Vacancy => ({
   startDate: '2024-01-01', endDate: null, trackHoursManually: true, places: [], carOnly: false,
   defaultHours, projectCode: 'ALWct',
   schedule: { weekdays: ['mon'], start: { kind: 'fixed', time: '07:00' }, end: { kind: 'fixed', time: '16:00' },
-    headcount: { kind: 'fixed', count: 1 }, horizon: 'week', plannedBy: 'agency' },
+    headcount: { kind: 'fixed', count: 1 }, horizon: 'week' },
 })
 
 const input = (over: Partial<ReportInput> = {}): ReportInput => ({

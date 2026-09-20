@@ -2,9 +2,9 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { ChevronLeft, ChevronRight, Plus, Repeat, Share2, Wand2, X } from 'lucide-react'
-import { Badge, Panel, StateBlock, TimeField } from './app-shell'
+import { Badge, Panel, StateBlock, TimeField, useExit } from './app-shell'
 import { demand as seedDemand, leaves, offers as seedOffers, roster as seedRoster, standing as seedStanding, vacancies, workers } from '@/lib/mock-data'
-import { assignmentOn, endFor, shiftsOverlap, slotTimeLabel, startFor, timingOf } from '@/lib/derive'
+import { alreadyOnVacancy, assignmentOn, availabilityLabel, availabilityOver, blockOn, endFor, isCourseDay, shiftsOverlap, slotTimeLabel, startFor, timingOf } from '@/lib/derive'
 import { travelFor } from '@/lib/travel'
 import { addDays, formatDate, isoWeek, weekDates, weekdayLabel, weekdayOf, WEEKDAYS, TODAY } from '@/lib/types'
 import type { Demand, Offer, RosterEntry, StandingAssignment, Vacancy, Weekday } from '@/lib/types'
@@ -42,6 +42,10 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
   const [draft, setDraft] = useState<{ date: string } | null>(null)
   const [replacing, setReplacing] = useState<StandingAssignment | null>(null)
   const [addingPerson, setAddingPerson] = useState(false)
+  /* The schedule is the long part of this page, and most visits are about who
+     normally works here rather than about a particular day — so it stays
+     folded until asked for. */
+  const [schedule, setSchedule] = useState(false)
 
   const week = isoWeek(anchor)
   const days = useMemo(() => {
@@ -67,7 +71,8 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
 
   /* Turning arrangements into shifts for the days on screen. Anything already
      there is left alone — generating must never overwrite a decision. */
-  const fillFromArrangements = () => {
+  const fillFromArrangements = (only?: StandingAssignment[]) => {
+    const source = only ?? arrangements
     /* A standing arrangement IS the order for this kind of work: nobody at a
        two-person evening clean sits down to "order two people every Monday".
        So filling creates the slot as well as the shifts — otherwise the shifts
@@ -76,7 +81,7 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
     const neededSlots: Demand[] = []
     for (const date of days) {
       const day = weekdayOf(date)
-      const due = arrangements.filter(a => a.vacancyId === vacancy.id && a.weekdays.includes(day)
+      const due = source.filter(a => a.vacancyId === vacancy.id && a.weekdays.includes(day)
         && a.from <= date && (!a.to || a.to >= date))
       for (const a of due) {
         const exists = mine(rows).some(r => r.date === date && sameSlot(r, a))
@@ -99,7 +104,7 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
     const made: RosterEntry[] = []
     for (const date of days) {
       const day = weekdayOf(date)
-      for (const a of arrangements.filter(x => x.vacancyId === vacancy.id)) {
+      for (const a of source.filter(x => x.vacancyId === vacancy.id)) {
         if (!a.weekdays.includes(day)) continue
         if (a.from > date || (a.to && a.to < date)) continue
         if (leaves.some(l => l.workerId === a.workerId && l.date === date)) continue
@@ -125,22 +130,29 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
      comes back automatically when the range ends. */
   const replaceOver = (a: StandingAssignment, incoming: string, from: string, to: string, reason: string) =>
     setPlan(cur => {
+      const cover = workers.find(w => w.id === incoming)
+      const note = reason || `Covering ${workers.find(w => w.id === a.workerId)?.fullName ?? ''}`.trim()
+      /* A day the cover cannot take is left with the original person rather
+         than handed over anyway: that is how somebody ended up on the same
+         job twice on one date. The dialog says how many days this is. */
+      const canTake = (date: string) => !!cover && blockOn(cover, date, vacancy.id, cur, leaves) === 'free'
+
       const touched = cur.map(s =>
-        s.vacancyId === vacancy.id && s.workerId === a.workerId && s.date >= from && s.date <= to
-          ? { ...s, workerId: incoming, note: reason || `Covering ${workers.find(w => w.id === a.workerId)?.fullName ?? ''}`.trim() }
+        s.vacancyId === vacancy.id && s.workerId === a.workerId && s.date >= from && s.date <= to && canTake(s.date)
+          ? { ...s, workerId: incoming, note }
           : s)
       /* Days in the range that were never generated still need covering. */
       const made: RosterEntry[] = []
       for (let d = from; d <= to; d = addDays(d, 1)) {
         if (!a.weekdays.includes(weekdayOf(d))) continue
+        if (!canTake(d)) continue
         if (touched.some(s => s.vacancyId === vacancy.id && s.date === d && s.workerId === incoming)) continue
         const slot = mine(rows).find(r => r.date === d && sameSlot(r, a))
         made.push({
           id: `r-cov-${a.id}-${d}`, vacancyId: vacancy.id, date: d, placeId: a.placeId, section: a.section,
           workerId: incoming, extra: false, extraReason: null, standingId: a.id,
           start: a.start ?? slot?.start ?? null, end: a.end ?? slot?.end ?? null,
-          outcome: 'planned', actualEnd: null, coversShiftId: null,
-          note: reason || `Covering ${workers.find(w => w.id === a.workerId)?.fullName ?? ''}`.trim(),
+          outcome: 'planned', actualEnd: null, coversShiftId: null, note,
         })
       }
       return [...touched, ...made]
@@ -201,7 +213,7 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
           <h3>Who normally works here</h3>
           <div className="standing-actions">
             <button className="button button-secondary" onClick={() => setAddingPerson(true)}><Plus />Add person</button>
-            <button className="button button-secondary" onClick={fillFromArrangements}
+            <button className="button button-secondary" onClick={() => { fillFromArrangements(); setSchedule(true) }}
               title="Create the shifts these arrangements imply, for the days on screen"><Wand2 />Fill schedule</button>
           </div>
         </div>
@@ -227,6 +239,13 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
         })}
       </div>
 
+      <button className={`sched-toggle ${schedule ? 'open' : ''}`} onClick={() => setSchedule(x => !x)} aria-expanded={schedule}>
+        <ChevronRight />
+        <strong>Schedule</strong>
+        <span>{schedule ? 'Hide the day-by-day plan' : `Day-by-day plan · ${mine(plan).filter(x => x.workerId).length} shifts placed`}</span>
+      </button>
+
+      {schedule && <>
       <div className="sched-toolbar">
         <div className="seg">
           {(['day', 'week', 'month'] as View[]).map(v => (
@@ -333,10 +352,21 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
         )}
       </div>
 
+      </>}
+
       {draft && <SlotDialog vacancy={vacancy} date={draft.date} onCancel={() => setDraft(null)}
         onSave={(placeId, section, headcount, start, end) => { addSlot(draft.date, placeId, section, headcount, start, end); setDraft(null) }} />}
-      {addingPerson && <PersonDialog vacancy={vacancy} onCancel={() => setAddingPerson(false)}
-        onSave={a => { setArrangements(cur => [...cur, a]); setAddingPerson(false) }} />}
+      {addingPerson && <PersonDialog vacancy={vacancy} plan={plan} onCancel={() => setAddingPerson(false)}
+        onSave={a => {
+          setArrangements(cur => [...cur, a])
+          /* Adding somebody to the vacancy IS putting them on its days —
+             nobody adds a person and then wonders why the schedule is empty.
+             The shifts are still ordinary shifts, so any single day can be
+             changed or handed to somebody else afterwards. */
+          fillFromArrangements([a])
+          setSchedule(true)
+          setAddingPerson(false)
+        }} />}
       {replacing && <ReplaceDialog vacancy={vacancy} arrangement={replacing} plan={plan} onCancel={() => setReplacing(null)}
         onSave={(incoming, from, to, reason) => { replaceOver(replacing, incoming, from, to, reason); setReplacing(null) }} />}
       {sharing && <ShareView vacancy={vacancy} days={days} slotsOn={slotsOn} shiftsIn={shiftsIn} onClose={() => setSharing(false)} />}
@@ -353,11 +383,17 @@ function useCandidates(vacancy: Vacancy, date: string, slot: { placeId: string |
         outcome: 'planned', actualEnd: null, coversShiftId: null, note: null }
       const busy = plan.some(s => s.workerId === w.id && s.date === date && shiftsOverlap(s, probe))
       const onLeave = leaves.some(l => l.workerId === w.id && l.date === date)
+      /* Already on THIS job today. Overlapping times catch most of it, but a
+         slot at another hour would slip through and the client's sheet would
+         show the same person twice. */
+      const duplicate = alreadyOnVacancy(plan, vacancy.id, date, w.id)
+      /* A course is a standing weekly commitment, not a day off. */
+      const onCourse = isCourseDay(w, date)
       /* Some sites cannot be reached without a car at the hours we staff
          them, so this is a hard block rather than a hint — being close by
          does not help if there is no way to get there at 05:30. */
       const noCar = vacancy.carOnly && !w.hasCar
-      return { w, busy, onLeave, noCar, elsewhere: assignmentOn(w.id, date, null, plan), travel: travelFor(w.id, vacancy.id) }
+      return { w, busy, onLeave, noCar, duplicate, onCourse, elsewhere: assignmentOn(w.id, date, null, plan), travel: travelFor(w.id, vacancy.id) }
     }), [vacancy, date, slot.placeId, slot.section, slot.start, slot.end, plan])
 }
 
@@ -394,7 +430,7 @@ function CandidateList({ vacancy, row, plan, offerFor, onAssign, onOffer }: {
     /* Free and near the top, already-refused at the bottom so nobody is rung
        twice with the same offer by accident. */
     .sort((a, b) => Number(a.offer?.status === 'declined') - Number(b.offer?.status === 'declined')
-      || Number(a.busy || a.onLeave || a.noCar) - Number(b.busy || b.onLeave || b.noCar)
+      || Number(a.busy || a.onLeave || a.noCar || a.duplicate || a.onCourse) - Number(b.busy || b.onLeave || b.noCar || b.duplicate || b.onCourse)
       || (a.travel?.km ?? 1e9) - (b.travel?.km ?? 1e9))
   const shown = carOnly ? candidates.filter(c => c.w.hasCar) : candidates
 
@@ -403,15 +439,15 @@ function CandidateList({ vacancy, row, plan, offerFor, onAssign, onOffer }: {
     <div className="candidate-list">
       {!vacancy.carOnly && <CarFilter on={carOnly} onChange={setCarOnly} />}
       {!shown.length && <StateBlock title="Nobody here has a car" description="Switch the filter off to see everyone who holds this contract." />}
-      {shown.map(({ w, busy, onLeave, noCar, elsewhere, travel, offer }) => {
-        const blocked = busy || onLeave || noCar
+      {shown.map(({ w, busy, onLeave, noCar, duplicate, onCourse, elsewhere, travel, offer }) => {
+        const blocked = busy || onLeave || noCar || duplicate || onCourse
         return (
           <div key={w.id} className={`candidate-row ${offer?.status === 'declined' ? 'declined' : ''}`}>
             <span>
               <strong>{w.fullName}</strong>
               <small>
                 {travel ? `${travel.km} km · ${travel.minutes} min` : 'no travel on record'}
-                {noCar ? ' · no car — this site needs one' : onLeave ? ' · on leave' : busy ? ` · already on ${vacancies.find(v => v.id === elsewhere?.vacancyId)?.title ?? 'another job'}` : ' · free'}
+                {duplicate ? ' · already on this job today' : noCar ? ' · no car — this site needs one' : onCourse ? ' · at a course this weekday' : onLeave ? ' · on leave' : busy ? ` · already on ${vacancies.find(v => v.id === elsewhere?.vacancyId)?.title ?? 'another job'}` : ' · free'}
                 {!vacancy.carOnly && (w.hasCar ? ' · car' : ' · no car')}
                 {offer && ` · ${offer.status === 'declined' ? 'declined' : 'offered'}${offer.note ? ` (${offer.note})` : ''}`}
               </small>
@@ -435,24 +471,38 @@ function ReplaceDialog({ vacancy, arrangement, plan, onCancel, onSave }: {
   vacancy: Vacancy; arrangement: StandingAssignment; plan: RosterEntry[]
   onCancel: () => void; onSave: (incoming: string, from: string, to: string, reason: string) => void
 }) {
+  const { closing, close: dismiss } = useExit(onCancel)
   const outgoing = workers.find(w => w.id === arrangement.workerId)
   const [from, setFrom] = useState(TODAY)
   const [to, setTo] = useState(TODAY)
   const [reason, setReason] = useState('')
   const [pick, setPick] = useState<string | null>(null)
   const [carOnly, setCarOnly] = useState(false)
+  /* The working days actually touched by this replacement — not every day in
+     the range, because the arrangement only covers some weekdays. */
+  const touchedDays = useMemo(() => {
+    const out: string[] = []
+    for (let d = from; d <= to; d = addDays(d, 1)) if (arrangement.weekdays.includes(weekdayOf(d))) out.push(d)
+    return out
+  }, [from, to, arrangement.weekdays])
+  /* Availability is judged over the WHOLE range. Judging it on the first day
+     alone was the hole through which somebody could be put on a job they
+     already work later in the week — twice on the same day. */
   const candidates = useCandidates(vacancy, from, arrangement, plan).filter(c => c.w.id !== arrangement.workerId)
     .filter(c => !carOnly || c.w.hasCar)
-    .sort((a, b) => Number(a.busy || a.onLeave || a.noCar) - Number(b.busy || b.onLeave || b.noCar) || (a.travel?.km ?? 1e9) - (b.travel?.km ?? 1e9))
+    .map(c => ({ ...c, span: availabilityOver(c.w, touchedDays, vacancy.id, plan, leaves) }))
+    .sort((a, b) => Number(!a.span.fullyFree) - Number(!b.span.fullyFree)
+      || a.span.taken.length - b.span.taken.length
+      || (a.travel?.km ?? 1e9) - (b.travel?.km ?? 1e9))
   const dayCount = Math.max(0, Math.round((new Date(`${to}T12:00:00Z`).getTime() - new Date(`${from}T12:00:00Z`).getTime()) / 86400000) + 1)
 
   return (
-    <div className="dialog-backdrop" onClick={onCancel}>
+    <div className={`dialog-backdrop ${closing ? 'closing' : ''}`} onClick={dismiss}>
       <div className="dialog dialog-wide" onClick={e => e.stopPropagation()}>
         <div className="panel-header">
           <div><h2>Replace {outgoing?.fullName}</h2>
             <p>Only the days in the range change. The standing arrangement stays, so {outgoing?.fullName?.split(' ')[0]} returns by itself afterwards.</p></div>
-          <button className="icon-button" onClick={onCancel} aria-label="Close"><X /></button>
+          <button className="icon-button" onClick={dismiss} aria-label="Close"><X /></button>
         </div>
         <div className="dialog-row">
           <label>From<input type="date" value={from} onChange={e => { setFrom(e.target.value); if (e.target.value > to) setTo(e.target.value) }} /></label>
@@ -461,23 +511,36 @@ function ReplaceDialog({ vacancy, arrangement, plan, onCancel, onSave }: {
         </div>
         <p className="dialog-note">
           {dayCount === 1 ? 'One day' : `${dayCount} days`} — only the working days of this arrangement
-          ({arrangement.weekdays.map(d => weekdayLabel[d]).join(' ')}) are touched.
+          ({arrangement.weekdays.map(d => weekdayLabel[d]).join(' ')}) are touched, {touchedDays.length} in this range.
+          {pick && (() => {
+            const chosen = candidates.find(c => c.w.id === pick)
+            return chosen && chosen.span.taken.length
+              ? ` ${chosen.span.taken.length} of them stay with ${workers.find(w => w.id === arrangement.workerId)?.firstName ?? 'the original person'} — the cover is not free on those.`
+              : ''
+          })()}
         </p>
         <div className="candidate-list">
           {!vacancy.carOnly && <CarFilter on={carOnly} onChange={on => { setCarOnly(on); setPick(null) }} />}
           {!candidates.length && <StateBlock title={carOnly ? 'Nobody here has a car' : 'Nobody else holds this contract'}
             description={carOnly ? 'Switch the filter off to see everyone.' : 'No other active worker has access to this client.'} />}
-          {candidates.map(({ w, busy, onLeave, noCar, travel }) => (
-            <button key={w.id} type="button" className={`candidate-row ${pick === w.id ? 'selected' : ''}`}
-              disabled={busy || onLeave || noCar} onClick={() => setPick(w.id)}>
-              <span><strong>{w.fullName}</strong>
-                <small>{travel ? `${travel.km} km · ${travel.minutes} min` : 'no travel on record'}{noCar ? ' · no car' : onLeave ? ' · on leave' : busy ? ' · already working' : ' · free'}{!vacancy.carOnly && (w.hasCar ? ' · car' : ' · no car')}</small></span>
-              <Badge tone={busy || onLeave || noCar ? 'orange' : 'green'}>{busy || onLeave || noCar ? 'Unavailable' : 'Free'}</Badge>
-            </button>
-          ))}
+          {candidates.map(({ w, noCar, travel, span }) => {
+            /* Nobody free on a single one of the days is no use as cover. */
+            const useless = noCar || !span.free.length
+            return (
+              <button key={w.id} type="button" className={`candidate-row ${pick === w.id ? 'selected' : ''}`}
+                disabled={useless} onClick={() => setPick(w.id)}>
+                <span><strong>{w.fullName}</strong>
+                  <small>{travel ? `${travel.km} km · ${travel.minutes} min` : 'no travel on record'}{noCar ? ' · no car' : ''}{!vacancy.carOnly && (w.hasCar ? ' · car' : ' · no car')}
+                    <br />{availabilityLabel(span)}</small></span>
+                <Badge tone={noCar ? 'orange' : span.fullyFree ? 'green' : span.free.length ? 'blue' : 'orange'}>
+                  {noCar ? 'No car' : span.fullyFree ? 'Free' : span.free.length ? `${span.free.length}/${span.days.length}` : 'Unavailable'}
+                </Badge>
+              </button>
+            )
+          })}
         </div>
         <div className="form-footer">
-          <button className="button button-secondary" onClick={onCancel}>Cancel</button>
+          <button className="button button-secondary" onClick={dismiss}>Cancel</button>
           <button className="button button-primary" disabled={!pick} onClick={() => onSave(pick!, from, to, reason.trim())}>Replace</button>
         </div>
       </div>
@@ -485,31 +548,80 @@ function ReplaceDialog({ vacancy, arrangement, plan, onCancel, onSave }: {
   )
 }
 
-function PersonDialog({ vacancy, onCancel, onSave }: {
-  vacancy: Vacancy; onCancel: () => void; onSave: (a: StandingAssignment) => void
+/** How far ahead "the whole vacancy" is judged when it has no end date. Four
+ *  weeks is what the office plans against; anything further is guesswork. */
+const HORIZON_DAYS = 28
+
+function PersonDialog({ vacancy, plan, onCancel, onSave }: {
+  vacancy: Vacancy; plan: RosterEntry[]; onCancel: () => void; onSave: (a: StandingAssignment) => void
 }) {
+  const { closing, close: dismiss } = useExit(onCancel)
   const [workerId, setWorkerId] = useState('')
   const [weekdays, setWeekdays] = useState<Weekday[]>(vacancy.schedule.weekdays.length ? vacancy.schedule.weekdays : ['mon', 'tue', 'wed', 'thu', 'fri'])
   const [placeId, setPlaceId] = useState<string | null>(null)
   const [section, setSection] = useState('')
+  const [carOnly, setCarOnly] = useState(false)
   const eligible = workers.filter(w => w.status === 'active' && w.companyAccess.includes(vacancy.companyId))
+
+  /* The days this arrangement would actually use: the chosen weekdays, inside
+     the vacancy's own period, out to the horizon. Availability is judged
+     against these and nothing else — being busy on a Sunday is irrelevant to
+     an arrangement that never works Sundays. */
+  const startFromDate = vacancy.startDate > TODAY ? vacancy.startDate : TODAY
+  const days = useMemo(() => {
+    const last = vacancy.endDate && vacancy.endDate < addDays(startFromDate, HORIZON_DAYS)
+      ? vacancy.endDate : addDays(startFromDate, HORIZON_DAYS)
+    const out: string[] = []
+    for (let d = startFromDate; d <= last; d = addDays(d, 1)) if (weekdays.includes(weekdayOf(d))) out.push(d)
+    return out
+  }, [startFromDate, vacancy.endDate, weekdays])
+
+  const candidates = eligible
+    .filter(w => !carOnly || w.hasCar)
+    .map(w => ({ w, span: availabilityOver(w, days, vacancy.id, plan, leaves), travel: travelFor(w.id, vacancy.id), noCar: vacancy.carOnly && !w.hasCar }))
+    /* Free for the whole run first, then whoever frees up soonest, then by
+       distance — the order the office would sort them in by hand. */
+    .sort((a, b) => Number(a.noCar) - Number(b.noCar)
+      || Number(!a.span.fullyFree) - Number(!b.span.fullyFree)
+      || (a.span.freeFrom ?? '9999').localeCompare(b.span.freeFrom ?? '9999')
+      || a.span.taken.length - b.span.taken.length
+      || (a.travel?.km ?? 1e9) - (b.travel?.km ?? 1e9))
+
   return (
-    <div className="dialog-backdrop" onClick={onCancel}>
+    <div className={`dialog-backdrop ${closing ? 'closing' : ''}`} onClick={dismiss}>
       <div className="dialog" onClick={e => e.stopPropagation()}>
         <div className="panel-header"><h2>Add a standing person</h2>
-          <button className="icon-button" onClick={onCancel} aria-label="Close"><X /></button></div>
-        <label>Person
-          <select value={workerId} onChange={e => setWorkerId(e.target.value)}>
-            <option value="">Select…</option>
-            {eligible.map(w => <option key={w.id} value={w.id}>{w.fullName}</option>)}
-          </select>
-        </label>
+          <button className="icon-button" onClick={dismiss} aria-label="Close"><X /></button></div>
         <label>Working days</label>
         <div className="seg">
           {WEEKDAYS.map(d => (
             <button key={d} className={weekdays.includes(d) ? 'active' : ''} type="button"
-              onClick={() => setWeekdays(cur => cur.includes(d) ? cur.filter(x => x !== d) : [...cur, d])}>{weekdayLabel[d]}</button>
+              onClick={() => { setWeekdays(cur => cur.includes(d) ? cur.filter(x => x !== d) : [...cur, d]); setWorkerId('') }}>{weekdayLabel[d]}</button>
           ))}
+        </div>
+        <p className="dialog-note">
+          Judged over {days.length} working {days.length === 1 ? 'day' : 'days'}
+          {vacancy.endDate ? ` to ${formatDate(vacancy.endDate)}` : ` — the next four weeks, since this vacancy has no end date`}.
+        </p>
+        <label>Person</label>
+        {!vacancy.carOnly && <CarFilter on={carOnly} onChange={setCarOnly} />}
+        {/* A dropdown answers "who exists". The question here is who is free,
+            and if not now then from when — so the list says it. */}
+        <div className="candidate-list">
+          {candidates.map(({ w, span, travel, noCar }) => (
+            <button key={w.id} type="button" className={`candidate-row ${workerId === w.id ? 'selected' : ''}`}
+              disabled={noCar || !span.free.length} onClick={() => setWorkerId(w.id)}>
+              <span><strong>{w.fullName}</strong>
+                <small>{travel ? `${travel.km} km · ${travel.minutes} min` : 'no travel on record'}
+                  {w.courseDays.length ? ` · course ${w.courseDays.map(d => weekdayLabel[d]).join(' ')}` : ''}
+                  {noCar ? ' · no car — this site needs one' : ''}
+                  <br />{availabilityLabel(span)}</small></span>
+              <Badge tone={noCar ? 'orange' : span.fullyFree ? 'green' : span.free.length ? 'blue' : 'orange'}>
+                {noCar ? 'No car' : span.fullyFree ? 'Free' : span.free.length ? `${span.free.length}/${span.days.length}` : 'Busy'}
+              </Badge>
+            </button>
+          ))}
+          {!candidates.length && <StateBlock title="Nobody holds this contract" description="No active worker has access to this client." />}
         </div>
         {vacancy.places.length > 0 && (
           <label>Place
@@ -520,9 +632,9 @@ function PersonDialog({ vacancy, onCancel, onSave }: {
           </label>
         )}
         <label>Section (optional)<input value={section} onChange={e => setSection(e.target.value)} placeholder="Inbound…" /></label>
-        <p className="dialog-note">This creates the arrangement, not the shifts. Press “Fill schedule” to turn it into days — nothing already on the schedule is overwritten.</p>
+        <p className="dialog-note">The chosen days are filled in straight away; days that already have somebody are left alone. Each day stays an ordinary shift afterwards, so one of them can be swapped without touching the arrangement.</p>
         <div className="form-footer">
-          <button className="button button-secondary" onClick={onCancel}>Cancel</button>
+          <button className="button button-secondary" onClick={dismiss}>Cancel</button>
           <button className="button button-primary" disabled={!workerId || !weekdays.length}
             onClick={() => onSave({ id: `sa-${Date.now()}`, vacancyId: vacancy.id, workerId, placeId, section: section.trim() || null,
               weekdays, start: null, end: null, from: TODAY, to: null, note: null })}>Add</button>
@@ -536,6 +648,7 @@ function SlotDialog({ vacancy, date, onCancel, onSave }: {
   vacancy: Vacancy; date: string; onCancel: () => void
   onSave: (placeId: string | null, section: string, headcount: number, start: string | null, end: string | null) => void
 }) {
+  const { closing, close: dismiss } = useExit(onCancel)
   const [placeId, setPlaceId] = useState<string | null>(vacancy.places[0]?.id ?? null)
   const [section, setSection] = useState('')
   const [headcount, setHeadcount] = useState(
@@ -549,10 +662,10 @@ function SlotDialog({ vacancy, date, onCancel, onSave }: {
   const [start, setStart] = useState(startFor(vacancy.schedule.start, day) ?? '')
   const [end, setEnd] = useState(endFor(vacancy.schedule.end, day) ?? '')
   return (
-    <div className="dialog-backdrop" onClick={onCancel}>
+    <div className={`dialog-backdrop ${closing ? 'closing' : ''}`} onClick={dismiss}>
       <div className="dialog" onClick={e => e.stopPropagation()}>
         <div className="panel-header"><h2>Order people on {formatDate(date)}</h2>
-          <button className="icon-button" onClick={onCancel} aria-label="Close"><X /></button></div>
+          <button className="icon-button" onClick={dismiss} aria-label="Close"><X /></button></div>
         {vacancy.places.length > 0 && (
           <label>Place
             <select value={placeId ?? ''} onChange={e => setPlaceId(e.target.value || null)}>
@@ -572,7 +685,7 @@ function SlotDialog({ vacancy, date, onCancel, onSave }: {
         )}
         {timing === 'start' && <p className="dialog-note">No end time on this job — people leave when the work is done, so the rest of the day stays blocked for them.</p>}
         <div className="form-footer">
-          <button className="button button-secondary" onClick={onCancel}>Cancel</button>
+          <button className="button button-secondary" onClick={dismiss}>Cancel</button>
           <button className="button button-primary"
             onClick={() => onSave(placeId, section, headcount, timing === 'none' ? null : start || null, timing === 'window' ? end || null : null)}>Add slot</button>
         </div>
@@ -586,13 +699,19 @@ function ShareView({ vacancy, days, slotsOn, shiftsIn, onClose }: {
   slotsOn: (date: string) => Demand[]; shiftsIn: (row: Demand) => RosterEntry[]
   onClose: () => void
 }) {
+  const { closing, close: dismiss } = useExit(onClose)
+  /* Only the days with something on them: an empty column is dead space in a
+     screenshot, and dead space is what makes the names small in WhatsApp's
+     preview. */
+  const shown = days.filter(d => slotsOn(d).length)
   return (
-    <div className="dialog-backdrop" onClick={onClose}>
+    <div className={`dialog-backdrop ${closing ? 'closing' : ''}`} onClick={dismiss}>
       <div className="share-sheet" onClick={e => e.stopPropagation()}>
         <div className="share-head"><strong>{vacancy.title}</strong>
-          <button className="icon-button" onClick={onClose} aria-label="Close"><X /></button></div>
-        <div className={`share-grid ${days.length === 1 ? 'share-one' : ''}`}>
-          {days.filter(d => slotsOn(d).length).map(date => (
+          <button className="icon-button" onClick={dismiss} aria-label="Close"><X /></button></div>
+        {!shown.length && <StateBlock title="Nothing to share yet" description="No days in this view have anybody ordered on them." />}
+        <div className={`share-grid ${shown.length === 1 ? 'share-one' : shown.length <= 7 ? 'share-row' : 'share-wrap'}`}>
+          {shown.map(date => (
             <div className="share-day" key={date}>
               <div className="share-date">{weekdayLabel[weekdayOf(date)]} {formatDate(date).replace(/ \d{4}$/, '')}</div>
               {slotsOn(date).map(row => (
