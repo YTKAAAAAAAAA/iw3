@@ -1050,3 +1050,24 @@ body, .app-shell, .sidebar, .panel, .topbar, .dialog {
 .cover-candidate > svg { flex: 0 0 14px; width: 14px; color: var(--muted-foreground); }
 @media (max-width: 900px) { .prototype-dashboard-grid, .prototype-detail-grid { grid-template-columns: 1fr; } .prototype-metrics, .prototype-detail-summary { grid-template-columns: repeat(2,minmax(0,1fr)); } }
 @media (max-width: 640px) { .prototype-metrics, .prototype-detail-summary, .instruction-grid { grid-template-columns: 1fr 1fr; gap: 8px; } .attention-row, .prototype-roster-row, .prototype-shift-row, .requirement-row, .change-row { align-items: flex-start; flex-wrap: wrap; padding-inline: 12px; } .attention-row .button, .shift-statuses, .shift-row-action { margin-left: 40px; } .shift-statuses { justify-content: flex-start; } .prototype-cover-drawer { width: 100%; } }
+
+/* Vacancy requirements use the same visual language as the prototype tab. */
+.requirements-editor { margin: 24px 0 0; padding-top: 20px; border-top: 1px solid var(--border); }
+.requirements-editor-head, .requirements-summary-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.requirements-editor-head h2 { margin: 0; font-size: 14px; }
+.requirements-editor-head p { max-width: 620px; margin: 5px 0 0; color: var(--muted-foreground); font-size: 11px; line-height: 1.5; }
+.requirements-editor-empty { margin: 16px 0 0; padding: 14px; border: 1px dashed var(--border); border-radius: 7px; color: var(--muted-foreground); font-size: 11px; }
+.requirements-editor-list { margin-top: 14px; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+.requirements-editor-row { display: grid; grid-template-columns: 30px 130px minmax(160px,1fr) auto 32px; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.requirements-editor-row:last-child { border-bottom: 0; }
+.requirements-editor-row input, .requirements-editor-row select { min-width: 0; min-height: 32px; padding: 6px 8px; border: 1px solid var(--input); border-radius: 6px; background: var(--card); color: var(--foreground); font: inherit; font-size: 11px; }
+.requirement-level { min-height: 28px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--muted); color: var(--muted-foreground); font-size: 10px; cursor: pointer; white-space: nowrap; }
+.requirement-level.active { border-color: var(--tone-warn-line); background: var(--tone-warn-plate); color: var(--tone-warn-ink); }
+.requirements-summary { margin: 0 20px 16px; padding: 14px 0 0; border-top: 1px solid var(--border); }
+.requirements-summary-head { align-items: baseline; }
+.requirements-summary-head strong { font-size: 12px; }
+.requirements-summary-head span { color: var(--muted-foreground); font-size: 11px; }
+.requirements-summary-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.requirement-summary-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 7px; border: 1px solid var(--border); border-radius: 6px; background: var(--muted); font-size: 11px; }
+.requirement-summary-chip > svg { width: 13px; height: 13px; color: var(--muted-foreground); }
+@media (max-width: 640px) { .requirements-editor-head { flex-direction: column; } .requirements-editor-row { grid-template-columns: 30px minmax(0,1fr) 32px; } .requirements-editor-row select, .requirements-editor-row input, .requirements-editor-row .requirement-level { grid-column: 2 / 3; } .requirements-editor-row .icon-button { grid-column: 3; grid-row: 1 / span 3; } }

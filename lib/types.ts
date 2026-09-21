@@ -76,7 +76,7 @@ export type SchedulePattern = {
   horizon:'day'|'week'|'month'
 }
 
-export type Vacancy = { id:string; title:string; companyId:string; address:string; lat:number|null; lon:number|null; description:string; startDate:ISODate; endDate:ISODate|null; trackHoursManually:boolean; schedule:SchedulePattern; places:VacancyPlace[];
+export type Vacancy = { id:string; title:string; companyId:string; address:string; lat:number|null; lon:number|null; description:string; startDate:ISODate; endDate:ISODate|null; trackHoursManually:boolean; schedule:SchedulePattern; places:VacancyPlace[]; requirements?:Requirement[];
   /** The site can only be reached by car at these hours. Somebody without
    *  one cannot be placed here, however close they live. */
   carOnly:boolean;

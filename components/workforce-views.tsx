@@ -4,7 +4,7 @@ import dynamic from 'next/dynamic'
 import { useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
-import { ArrowUpRight, Briefcase, CalendarDays, Check, ChevronLeft, ChevronRight, CircleAlert, FileText, Filter, MapPin, Plus, Search, Upload, X } from 'lucide-react'
+import { ArrowUpRight, Briefcase, CalendarDays, Check, ChevronLeft, ChevronRight, CircleAlert, FileCheck2, FileText, Filter, MapPin, Plus, Search, Upload, X } from 'lucide-react'
 import { AppShell, Badge, PageHeading, Panel, StateBlock, TimeField, useExit } from './app-shell'
 import { Brand } from './logo'
 import { companies, hours, leaves, manatalCandidates, roster, standing, workers, vacancies } from '@/lib/mock-data'
@@ -20,7 +20,7 @@ import { AddressPicker, type PickedAddress } from './address-picker'
    kilometres next to each candidate are all anyone needs. */
 const LazyMapPanel=dynamic(()=>import('./map-view').then(m=>m.MapPanel),{ssr:false,loading:()=><p className="map-note">Loading map…</p>})
 import { addDays, formatDate, TODAY, weekDates, weekdayLabel, WEEKDAYS, isoWeek } from '@/lib/types'
-import type { Company, HoursEntry, Leave, RosterEntry, Vacancy, VacancyPlace, Weekday, Worker } from '@/lib/types'
+import type { Company, HoursEntry, Leave, Requirement, RosterEntry, Vacancy, VacancyPlace, Weekday, Worker } from '@/lib/types'
 
 function Metric({label,value,caption,href}:{label:string;value:string|number;caption:string;href:string}){return <Link href={href} className="metric-card"><div className="metric-label">{label}<ArrowUpRight/></div><div className="metric-value-row"><strong>{value}</strong></div><span className="metric-caption">{caption}</span></Link>}
 export function Overview(){const active=workers.filter(w=>w.status==='active'); const free=availableWorkers(workers,TODAY,roster,leaves,vacancies); const open=vacancies.filter(v=>vacancyStatus(v,standing,roster,TODAY)==='open'); const leave=workers.filter(w=>dayStatus(w.id,TODAY,roster,leaves,vacancies)==='leave'); return <AppShell><div className="content-inner"><PageHeading eyebrow="Workspace" title={new Intl.DateTimeFormat('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'}).format(new Date(`${TODAY}T12:00:00`))} description="Here’s what’s happening across your workforce today." action={<Link className="button button-primary" href="/vacancies/new"><Plus/>Create vacancy</Link>}/><section className="metrics-grid"><Metric label="Open vacancies" value={open.length} caption={`${vacancies.length} total vacancies`} href="/vacancies"/><Metric label="People available" value={free.length} caption={`of ${active.length} active people`} href="/people"/><Metric label="On leave today" value={leave.length} caption="Leave takes priority over work" href="/people"/><Metric label="Total people" value={active.length} caption={`${workers.length-active.length} dismissed workers`} href="/people?status=dismissed"/></section><div className="dashboard-grid"><Panel><div className="panel-header"><div><h2>Today’s availability</h2><p>People ready for assignment</p></div><Link className="text-button" href="/people">View people <ArrowUpRight/></Link></div>{free.slice(0,5).map(w=><Link className="availability-row" href={`/people/${w.id}`} key={w.id}><div><strong>{w.fullName}</strong><span>{w.city} · Available today</span></div><Badge tone="green">Free</Badge></Link>)}</Panel><Panel><div className="panel-header"><div><h2>Coming up</h2><p>Leave and roster overview</p></div><CalendarDays/></div>{leaves.slice(0,4).map(l=>{const w=workers.find(x=>x.id===l.workerId)!;return <Link className="coming-item" href={`/people/${w.id}`} key={l.id}><div className="date-block"><strong>{l.date.slice(-2)}</strong><span>{formatDate(l.date).split(' ')[1]}</span></div><div><strong>{w.fullName}</strong><span>{l.reason} · {formatDate(l.date)}</span></div></Link>})}</Panel></div><Panel className="people-preview"><div className="panel-header"><div><h2>People</h2><p>Recently active and available workers</p></div><Link className="text-button" href="/people">View all people <ArrowUpRight/></Link></div><PeopleTable compact/></Panel></div></AppShell>}
@@ -204,7 +204,7 @@ export type VacancyDraft = {
   startDate: string; endDate: string | null
   timing: 'window' | 'start' | 'none'; start: string | null; end: string | null
   weekdays: Weekday[]; headcount: number
-  places: VacancyPlace[]; carOnly: boolean
+  places: VacancyPlace[]; requirements: Requirement[]; carOnly: boolean
   trackHoursManually: boolean; defaultHours: string; projectCode: string
 }
 
@@ -218,7 +218,7 @@ export const draftFromVacancy = (v: Vacancy): VacancyDraft => ({
   weekdays: v.schedule.weekdays,
   headcount: v.schedule.headcount.kind === 'fixed' ? v.schedule.headcount.count
     : v.schedule.headcount.kind === 'perDate' ? v.schedule.headcount.typical : 1,
-  places: v.places, carOnly: v.carOnly,
+  places: v.places, requirements: v.requirements ?? [], carOnly: v.carOnly,
   trackHoursManually: v.trackHoursManually,
   defaultHours: v.defaultHours === null ? '' : String(v.defaultHours),
   projectCode: v.projectCode ?? '',
@@ -235,7 +235,7 @@ export const applyDraft = (v: Vacancy, d: VacancyDraft): Vacancy => ({
   lat: d.address?.lat ?? v.lat, lon: d.address?.lon ?? v.lon,
   description: d.description,
   startDate: d.startDate, endDate: d.endDate,
-  places: d.places, carOnly: d.carOnly,
+  places: d.places, requirements: d.requirements, carOnly: d.carOnly,
   trackHoursManually: d.trackHoursManually,
   defaultHours: d.defaultHours.trim() === '' ? null : Number(d.defaultHours),
   projectCode: d.projectCode.trim() || null,
@@ -254,6 +254,33 @@ export const applyDraft = (v: Vacancy, d: VacancyDraft): Vacancy => ({
       : { kind: 'fixed', count: d.headcount },
   },
 })
+
+const requirementKinds: Requirement['kind'][] = ['skill', 'language', 'document', 'transport', 'availability']
+const requirementKindLabel: Record<Requirement['kind'], string> = {
+  skill: 'Skill', language: 'Language', document: 'Document', transport: 'Transport', availability: 'Availability',
+}
+
+function RequirementsEditor({ draft, set }: { draft: VacancyDraft; set: (patch: Partial<VacancyDraft>) => void }) {
+  const update = (id: string, patch: Partial<Requirement>) => set({ requirements: draft.requirements.map(item => item.id === id ? { ...item, ...patch } : item) })
+  const add = () => set({ requirements: [...draft.requirements, { id: `req-${Date.now()}`, kind: 'skill', label: '', required: true }] })
+  const remove = (id: string) => set({ requirements: draft.requirements.filter(item => item.id !== id) })
+  return <section className="requirements-editor wide">
+    <div className="requirements-editor-head"><div><h2>Requirements</h2><p>Required items block unsuitable candidates. Preferred items guide matching without blocking an offer.</p></div><button type="button" className="button button-secondary button-small" onClick={add}><Plus />Add requirement</button></div>
+    {!draft.requirements.length && <p className="requirements-editor-empty">No requirements yet. Add the things a person must bring, know, or be available for at this site.</p>}
+    <div className="requirements-editor-list">{draft.requirements.map(item => <div className="requirements-editor-row" key={item.id}>
+      <span className={`requirement-icon ${item.kind}`}><FileCheck2 /></span>
+      <select aria-label="Requirement type" value={item.kind} onChange={e => update(item.id, { kind: e.target.value as Requirement['kind'] })}>{requirementKinds.map(kind => <option key={kind} value={kind}>{requirementKindLabel[kind]}</option>)}</select>
+      <input aria-label="Requirement" value={item.label} placeholder="e.g. Warehouse experience" onChange={e => update(item.id, { label: e.target.value })} />
+      <button type="button" className={`requirement-level ${item.required ? 'active' : ''}`} onClick={() => update(item.id, { required: !item.required })}>{item.required ? 'Required' : 'Preferred'}</button>
+      <button type="button" className="icon-button" aria-label={`Remove ${item.label || 'requirement'}`} onClick={() => remove(item.id)}><X /></button>
+    </div>)}</div>
+  </section>
+}
+
+function RequirementSummary({ requirements }: { requirements: Requirement[] }) {
+  if (!requirements.length) return null
+  return <div className="requirements-summary"><div className="requirements-summary-head"><strong>Requirements</strong><span>{requirements.filter(item => item.required).length} required · {requirements.filter(item => !item.required).length} preferred</span></div><div className="requirements-summary-list">{requirements.map(item => <span key={item.id} className="requirement-summary-chip"><FileCheck2 />{item.label || 'Unnamed requirement'}<Badge tone={item.required ? 'orange' : 'neutral'}>{item.required ? 'Required' : 'Preferred'}</Badge></span>)}</div></div>
+}
 
 function VacancyFields({ draft, set }: { draft: VacancyDraft; set: (patch: Partial<VacancyDraft>) => void }) {
   const [place, setPlace] = useState('')
@@ -344,14 +371,14 @@ const save=()=>{setVacancy(cur=>applyDraft(cur,draft));setEditing(false)}
 const status=vacancyStatus(v,standing,roster,TODAY)
 return <AppShell title="Vacancy"><div className="content-inner"><div className="back-link"><Link href="/vacancies">← Back to vacancies</Link></div><PageHeading eyebrow="Vacancy detail" title={v.title} description={`${companies.find(c=>c.id===v.companyId)?.name} · ${v.address}`} action={<Badge tone={status==='archived'?'neutral':status==='open'?'orange':'green'}>{status.replace('_',' ')}</Badge>}/><div className="vacancy-meta"><span><MapPin/>{v.address}</span><span><CalendarDays/>{formatDate(v.startDate)} – {v.endDate?formatDate(v.endDate):'Open-ended'}</span><span>{v.trackHoursManually?'Hours tracked manually':'Hours not tracked manually'}</span></div>
 
-<Panel className="full-panel"><div className="panel-header"><div><h2>Details</h2><p>{editing?'Every field the client can ask us to change.':'What the team does here, and how the job is set up.'}</p></div>{!editing&&<button className="button button-secondary" onClick={startEditing}>Edit</button>}</div>{editing?<div className="vacancy-editor"><VacancyFields draft={draft} set={set}/><div className="form-footer"><button className="button button-secondary" onClick={()=>setEditing(false)}>Cancel</button><button className="button button-primary" onClick={save}>Save vacancy</button></div></div>:<p className="muted-copy panel-body">{v.description||'No description yet.'}</p>}</Panel>
+<Panel className="full-panel"><div className="panel-header"><div><h2>Details</h2><p>{editing?'Every field the client can ask us to change.':'What the team does here, and how the job is set up.'}</p></div>{!editing&&<button className="button button-secondary" onClick={startEditing}>Edit</button>}</div>{editing?<div className="vacancy-editor"><VacancyFields draft={draft} set={set}/><RequirementsEditor draft={draft} set={set}/><div className="form-footer"><button className="button button-secondary" onClick={()=>setEditing(false)}>Cancel</button><button className="button button-primary" onClick={save}>Save vacancy</button></div></div>:<><p className="muted-copy panel-body">{v.description||'No description yet.'}</p><RequirementSummary requirements={v.requirements ?? []}/></>}</Panel>
 
 {FEATURES.schedulePattern&&<Panel className="full-panel"><div className="panel-header"><div><h2>Schedule</h2><p>How this object is normally staffed.</p></div></div><ul className="schedule-lines">{describeSchedule(v).map(line=><li key={line}>{line}</li>)}</ul></Panel>}
 
 {/* People and days live in one place. There is no separate "assign person"
     any more: a schedule already says who works when, and a replacement is
     the same edit at a different size. */}
-<Panel className="full-panel"><VacancySchedule vacancy={v}/></Panel>
+<Panel className="full-panel"><RequirementSummary requirements={v.requirements ?? []}/><VacancySchedule vacancy={v}/></Panel>
 
 <Panel className="full-panel vacancy-map"><div className="panel-header"><div><h2>Who is nearby</h2><p>Road distance from {v.address}. Kilometres show on every candidate when picking people; the map is for choosing by eye.</p></div><button className="button button-secondary" onClick={()=>setShowMap(x=>!x)}>{showMap?'Hide map':'Show on map'}</button></div>{showMap&&<div className="panel-body"><LazyMapPanel vacancyId={v.id}/></div>}</Panel>
 </div></AppShell>}
@@ -362,10 +389,15 @@ const [draft,setDraft]=useState<VacancyDraft>({
   startDate:TODAY,endDate:null,
   timing:'window',start:'08:00',end:'16:30',
   weekdays:['mon','tue','wed','thu','fri'],headcount:1,
-  places:[],carOnly:false,trackHoursManually:false,defaultHours:'8',projectCode:'',
+  places:[],requirements:[
+    { id:'req-car', kind:'transport', label:'Own car', required:true },
+    { id:'req-vog', kind:'document', label:'VOG on file', required:true },
+    { id:'req-warehouse', kind:'skill', label:'Warehouse experience', required:true },
+    { id:'req-language', kind:'language', label:'Dutch or English', required:false },
+  ],carOnly:false,trackHoursManually:false,defaultHours:'8',projectCode:'',
 })
 const set=(patch:Partial<VacancyDraft>)=>setDraft(cur=>({...cur,...patch}))
-return <AppShell title="Create vacancy"><div className="content-inner"><div className="back-link"><Link href="/vacancies">← Back to vacancies</Link></div><PageHeading eyebrow="Assignments" title="Create vacancy" description="Add a client order without storing computed status."/><Panel className="form-panel"><VacancyFields draft={draft} set={set}/><div className="form-footer"><Link href="/vacancies" className="button button-secondary">Cancel</Link><button className="button button-primary" disabled={!draft.title.trim()||!draft.address}>Create vacancy</button></div></Panel></div></AppShell>}
+return <AppShell title="Create vacancy"><div className="content-inner"><div className="back-link"><Link href="/vacancies">← Back to vacancies</Link></div><PageHeading eyebrow="Assignments" title="Create vacancy" description="Add a client order without storing computed status."/><Panel className="form-panel"><VacancyFields draft={draft} set={set}/><RequirementsEditor draft={draft} set={set}/><div className="form-footer"><Link href="/vacancies" className="button button-secondary">Cancel</Link><button className="button button-primary" disabled={!draft.title.trim()||!draft.address}>Create vacancy</button></div></Panel></div></AppShell>}
 
 export function CompaniesView(){const [list,setList]=useState<Company[]>(companies)
 const [editing,setEditing]=useState<Company|'new'|null>(null)
