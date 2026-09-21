@@ -239,3 +239,35 @@ export type Offer = {
   note:string|null
   at:ISODateTime
 }
+
+/* ------------------------------------------------------------------
+   Prototype operations layer.
+
+   These additive types make the dispatcher workflow visible without changing
+   the production mock model yet. They are deliberately small: the prototype
+   is testing the language and the interaction before this becomes storage.
+   ------------------------------------------------------------------ */
+export type ConfirmationState = 'not_contacted'|'offered'|'accepted'|'declined'|'no_response'|'cancelled'
+export type AttendanceState = 'not_started'|'on_the_way'|'present'|'late'|'left_early'|'no_show'|'worked'
+export type RequirementKind = 'skill'|'language'|'document'|'transport'|'availability'
+export type Requirement = { id:string; kind:RequirementKind; label:string; required:boolean }
+export type PrototypeConfirmation = {
+  id:string; shiftId:string; workerId:string; state:ConfirmationState
+  lastContact:string|null; note:string|null
+}
+export type PrototypeAttendance = {
+  shiftId:string; state:AttendanceState; actualStart:string|null; actualEnd:string|null
+  breakMinutes:number; note:string|null
+}
+export type PrototypeChange = {
+  id:string; at:string; author:string; type:'order'|'time'|'assignment'|'client'|'cancellation'
+  text:string
+}
+export type PrototypeAttention = {
+  id:string; severity:'critical'|'warning'|'info'; kind:'coverage'|'confirmation'|'replacement'|'client'|'hours'|'compliance'
+  title:string; detail:string; vacancyId:string; date:ISODate; action:string
+}
+export type PrototypeShiftMeta = {
+  shiftId:string; role:string|null; billable:'client'|'agency'|'pending'
+  confirmation:ConfirmationState; attendance:AttendanceState
+}
