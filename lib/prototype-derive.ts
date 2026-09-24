@@ -1,5 +1,5 @@
 import { effectiveEnd, shiftsOverlap } from './derive'
-import { minutesOf, type Demand, type PrototypeAttendance, type PrototypeConfirmation, type RosterEntry } from './types'
+import { minutesOf, type Demand, type PrototypeAttendance, type PrototypeConfirmation, type RosterEntry, type Vacancy } from './types'
 
 export type SlotSummary = {
   ordered: number
@@ -76,6 +76,17 @@ export function restWarning(previous: RosterEntry | null, next: RosterEntry | nu
 
 export function overlapWarnings(candidate: RosterEntry, plan: RosterEntry[]) {
   return plan.filter(s => shiftsOverlap(s, candidate)).map(s => s.id)
+}
+
+export const isManualHoursVacancy = (vacancy: Vacancy) => vacancy.trackHoursManually
+
+export const attendanceNeedsHours = (attendance: PrototypeAttendance | null) =>
+  attendance?.state !== 'no_show'
+
+export const hoursReminderState = (vacancy: Vacancy, date: string, endReached: boolean, workerIds: string[], saved: Set<string>) => {
+  if (!isManualHoursVacancy(vacancy)) return { visible: false, due: false, remaining: 0 }
+  const remaining = workerIds.filter(id => !saved.has(`${vacancy.id}:${date}:${id}`)).length
+  return { visible: remaining > 0, due: vacancy.schedule.end.kind === 'fixed' ? endReached && remaining > 0 : remaining > 0, remaining }
 }
 
 export type Fit = 'eligible' | 'warning' | 'blocked'

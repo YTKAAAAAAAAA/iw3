@@ -37,6 +37,8 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
   const [plan, setPlan] = useState<RosterEntry[]>(seedRoster)
   const [arrangements, setArrangements] = useState<StandingAssignment[]>(seedStanding)
   const [offerLog, setOfferLog] = useState<Offer[]>(seedOffers)
+  const [covering, setCovering] = useState<RosterEntry | null>(null)
+  const [coverStart, setCoverStart] = useState('12:00')
   const [openSlot, setOpenSlot] = useState<string | null>(null)
   const [sharing, setSharing] = useState(false)
   const [draft, setDraft] = useState<{ date: string } | null>(null)
@@ -152,7 +154,7 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
           id: `r-cov-${a.id}-${d}`, vacancyId: vacancy.id, date: d, placeId: a.placeId, section: a.section,
           workerId: incoming, extra: false, extraReason: null, standingId: a.id,
           start: a.start ?? slot?.start ?? null, end: a.end ?? slot?.end ?? null,
-          outcome: 'planned', actualEnd: null, coversShiftId: null, note,
+          outcome: 'worked', actualEnd: null, coversShiftId: null, note,
         })
       }
       return [...touched, ...made]
@@ -173,9 +175,26 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
     setPlan(cur => [...cur, {
       id: `r-${Date.now()}`, vacancyId: vacancy.id, date: row.date, placeId: row.placeId, section: row.section,
       workerId, extra, extraReason: extra ? 'Beyond the client order' : null, standingId: null,
-      start: row.start, end: row.end, outcome: 'planned', actualEnd: null, coversShiftId: null, note: null,
+      start: row.start, end: row.end, outcome: 'worked', actualEnd: null, coversShiftId: null, note: null,
     }])
   const unassign = (id: string) => setPlan(cur => cur.filter(s => s.id !== id))
+  const markOutcome = (id: string, outcome: 'worked' | 'no_show') => setPlan(cur => cur.map(s => s.id === id
+    ? { ...s, outcome }
+    : s))
+  const assignCover = (original: RosterEntry, workerId: string) => {
+    setPlan(cur => [...cur, {
+      ...original,
+      id: `r-cover-${Date.now()}`,
+      workerId,
+      start: coverStart,
+      outcome: 'worked',
+      actualEnd: null,
+      coversShiftId: original.id,
+      note: `Replacement from ${coverStart}`
+    }])
+    setOffer(workerId, original.date, 'offered')
+    setCovering(null)
+  }
   /* The number beside a name is its position, so the position has to be
      movable — the same up/down the old warehouse schedule had. Order is the
      array order; swapping two entries is the whole operation. */
@@ -312,14 +331,18 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
                         {shifts.map((s, index) => {
                           const w = workers.find(x => x.id === s.workerId)
                           return (
-                            <span key={s.id} className={`name-chip ${s.extra ? 'extra' : ''}`} title={s.note ?? s.extraReason ?? undefined}>
+                            <span key={s.id} className={`name-chip ${s.extra ? 'extra' : ''} ${s.outcome === 'no_show' ? 'attendance-danger' : ''} ${s.coversShiftId ? 'cover-shift' : ''}`} title={s.note ?? s.extraReason ?? undefined}>
                               {/* Numbering restarts at 1 for every slot, exactly as on the
                                   old warehouse schedule: each place and section counts
                                   its own people. */}
                               <b className="chip-no">{index + 1}.</b>
                               <Link href={`/people/${s.workerId}`}>{w?.fullName ?? '—'}</Link>
                               {s.extra && <em>extra</em>}
-                              {s.note && !s.extra && <em>cover</em>}
+                              {s.coversShiftId && <em>replacement · {s.start}</em>}
+                              {!s.coversShiftId && s.outcome === 'no_show' && <em>no show · 0 h</em>}
+                              {!s.coversShiftId && s.outcome !== 'no_show' && s.note && !s.extra && <em>cover</em>}
+                              <select className="attendance-select" value={s.outcome === 'no_show' ? 'no_show' : 'worked'} aria-label={`Attendance for ${w?.fullName ?? 'worker'}`} onChange={event => markOutcome(s.id, event.target.value as 'worked' | 'no_show')}><option value="worked">Worked</option><option value="no_show">No show</option></select>
+                              {s.outcome === 'no_show' && !s.coversShiftId && <button onClick={() => { setCoverStart(s.start ?? '12:00'); setCovering(s); setOpenSlot(row.id) }} title="Find a replacement">Cover</button>}
                               <button onClick={() => move(row, s.id, -1)} disabled={index === 0} aria-label="Move up">↑</button>
                               <button onClick={() => move(row, s.id, 1)} disabled={index === shifts.length - 1} aria-label="Move down">↓</button>
                               <button onClick={() => toggleExtra(s.id)} title="Beyond the client order — worked, not billed">±</button>
@@ -342,11 +365,12 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
         {active && (
           <Panel className="sched-picker">
             <div className="panel-header">
-              <div><h2>Who can work</h2><p>{slotTitle(vacancy, active)} · {formatDate(active.date)}</p></div>
+              <div><h2>{covering ? 'Who can replace' : 'Who can work'}</h2><p>{slotTitle(vacancy, active)} · {formatDate(active.date)}</p></div>
               <button className="icon-button" onClick={() => setOpenSlot(null)} aria-label="Close"><X /></button>
             </div>
+            {covering && <label className="cover-start-field">Replacement starts<input type="time" value={coverStart} onChange={event => setCoverStart(event.target.value)} /></label>}
             <CandidateList vacancy={vacancy} row={active} plan={plan} offerFor={offerFor}
-              onAssign={(id, extra) => assign(active, id, extra)}
+              onAssign={(id, extra) => covering ? assignCover(covering, id) : assign(active, id, extra)}
               onOffer={(id, status) => setOffer(id, active.date, status)} />
           </Panel>
         )}

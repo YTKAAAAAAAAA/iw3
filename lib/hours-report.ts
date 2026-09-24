@@ -33,7 +33,13 @@ export type ReportRow = { worker: Worker; cells: number[]; total: number }
 
 /** Was this person on this vacancy that day, by the schedule? */
 const scheduled = (workerId: string, vacancyId: string, date: ISODate, roster: RosterEntry[]) =>
-  roster.some(r => r.workerId === workerId && r.vacancyId === vacancyId && r.date === date && r.outcome !== 'cancelled' && r.outcome !== 'no_show')
+  roster.some(r => r.workerId === workerId && r.vacancyId === vacancyId && r.date === date && r.outcome !== 'cancelled')
+
+/** A no-show is still a scheduled row, but it is never paid the vacancy
+ * default. Keeping it in the roster makes the absence and any later cover
+ * visible without silently turning it into a worked day. */
+const noShow = (workerId: string, vacancyId: string, date: ISODate, roster: RosterEntry[]) =>
+  roster.some(r => r.workerId === workerId && r.vacancyId === vacancyId && r.date === date && r.outcome === 'no_show')
 
 /** What a day is worth: what was typed, or the vacancy's default if the person
  *  was on the schedule and nobody touched the cell. A no-show is worth
@@ -41,6 +47,7 @@ const scheduled = (workerId: string, vacancyId: string, date: ISODate, roster: R
 export function hoursOn(input: ReportInput, workerId: string, date: ISODate): number {
   const typed = input.entries.find(e => e.workerId === workerId && e.vacancyId === input.vacancy.id && e.date === date)
   if (typed) return typed.hours
+  if (noShow(workerId, input.vacancy.id, date, input.roster)) return 0
   if (input.vacancy.defaultHours !== null && scheduled(workerId, input.vacancy.id, date, input.roster)) return input.vacancy.defaultHours
   return 0
 }
