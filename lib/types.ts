@@ -10,11 +10,13 @@ export type ISODateTime = string
  *  `hasVog` records whether a Verklaring Omtrent het Gedrag is on file. Some
  *  clients will not let anybody on site without one, so the office needs the
  *  answer on the person rather than buried in a document folder. */
-export type Worker = { id:string; flexpediaId:number|null; manatalCandidateId:number|null; initials:string; firstName:string; insertion:string|null; lastName:string; fullName:string; gender:'m'|'f'|null; birthDate:ISODate|null; street:string|null; streetNumber:string|null; streetNumberAddition:string|null; postCode:string|null; city:string|null; residenceCountry:string|null; nationality:string|null; phone:string|null; phoneCountry:string|null; mobile:string|null; email:string; lat:number|null; lon:number|null; geocodedAt:ISODateTime|null; notes:string; hasCar:boolean; hasVog:boolean; courseDays:Weekday[]; status:'active'|'dismissed'; dismissedAt:ISODate|null; companyAccess:string[]; manatalLink:'linked'|'not_found'|'ambiguous'; cvUrl:string|null }
+export type Worker = { id:string; flexpediaId:number|null; manatalCandidateId:number|null; initials:string; firstName:string; insertion:string|null; lastName:string; fullName:string; gender:'m'|'f'|null; birthDate:ISODate|null; street:string|null; streetNumber:string|null; streetNumberAddition:string|null; postCode:string|null; city:string|null; residenceCountry:string|null; nationality:string|null; phone:string|null; phoneCountry:string|null; mobile:string|null; email:string; lat:number|null; lon:number|null; geocodedAt:ISODateTime|null; notes:string; hasCar:boolean|null; hasVog:boolean|null; courseDays:Weekday[]; status:'active'|'dismissed'; dismissedAt:ISODate|null; companyAccess:string[]; manatalLink:'linked'|'not_found'|'ambiguous'; cvUrl:string|null }
 export type Company = { id:string; name:string; contactPerson:string|null; phone:string|null; notes:string|null; logoUrl:string|null }
 /** A hall or site inside a vacancy — Slego, Conakryweg. Added and removed by
  *  hand as the client opens and closes them. */
 export type VacancyPlace = { id:string; name:string }
+export type RequirementKind = 'skill'|'language'|'document'|'transport'|'availability'
+export type Requirement = { id:string; kind:RequirementKind; label:string; required:boolean }
 
 export type Weekday = 'mon'|'tue'|'wed'|'thu'|'fri'|'sat'|'sun'
 export const WEEKDAYS:Weekday[] = ['mon','tue','wed','thu','fri','sat','sun']
@@ -77,6 +79,7 @@ export type SchedulePattern = {
 }
 
 export type Vacancy = { id:string; title:string; companyId:string; address:string; lat:number|null; lon:number|null; description:string; startDate:ISODate; endDate:ISODate|null; trackHoursManually:boolean; schedule:SchedulePattern; places:VacancyPlace[];
+  requiresAvailableList?:boolean;
   /** The site can only be reached by car at these hours. Somebody without
    *  one cannot be placed here, however close they live. */
   carOnly:boolean;
@@ -87,7 +90,8 @@ export type Vacancy = { id:string; title:string; companyId:string; address:strin
   defaultHours:number|null;
   /** The client's own code for this job, printed in their weekly sheet
    *  (Projectcode: 'ALWct'). Ours to carry, not to invent. */
-  projectCode:string|null }
+  projectCode:string|null;
+  requirements?:Requirement[] }
 /**
  * A standing arrangement: "Jan works this vacancy on these weekdays".
  *
@@ -173,10 +177,20 @@ export type Demand = {
   note:string|null
 }
 export type Leave = { id:string; workerId:string; date:ISODate; reason:string; paidLeave:boolean }
-export type HoursEntry = { id:string; workerId:string; vacancyId:string; date:ISODate; hours:number }
+export type HoursEntry = { id:string; workerId:string; vacancyId:string; date:ISODate; hours:number; manual?:boolean }
 export type SyncState = { source:'flexpedia'|'manatal'; lastSyncAt:ISODateTime|null; status:'idle'|'running'|'error'; error:string|null }
 export type DayState = 'working'|'leave'|'free'
-export const TODAY: ISODate = '2024-06-18'
+export function todayInAmsterdam(now = new Date()): ISODate {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Amsterdam',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now)
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]))
+  return `${values.year}-${values.month}-${values.day}`
+}
+export const TODAY: ISODate = todayInAmsterdam()
 export const ACTIVE_STATUSES = ['active'] as const
 export const WORKER_TONES = ['blue','green','orange','purple','teal'] as const
 export type RoadDistance = { km:number; minutes:number }

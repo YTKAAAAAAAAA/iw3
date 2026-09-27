@@ -335,6 +335,13 @@ svg { width: 16px; height: 16px; flex: none; }
    child, and it was being stretched to half the row by this rule. */
 .candidate-row > span:not(.badge) { display: flex; flex: 1; flex-direction: column; gap: 4px; min-width: 0; }
 .candidate-row small { color: var(--muted-foreground); font-size: 11px; }
+.candidate-row.candidate-hidden { background: var(--muted); }
+.candidate-visibility-toolbar { display: flex; justify-content: flex-end; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+.candidate-visibility-toolbar svg, .sched-day-actions svg { width: 14px; height: 14px; }
+.sched-day-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.available-people-dialog { max-height: 88vh; }
+.available-image-preview { max-height: 62vh; overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
+.available-image-preview canvas { display: block; width: 100%; height: auto; }
 .dialog-row { display: flex; gap: 12px; }
 .dialog-row > label { flex: 1; }
 .dialog-note { padding: 8px 12px; border-radius: 8px; background: var(--muted); color: var(--muted-foreground); font-size: 11px; }
@@ -641,6 +648,11 @@ svg { width: 16px; height: 16px; flex: none; }
 .sched-picker .candidate-list { max-height: 520px; border: 0; border-radius: 0; }
 .candidate-row.declined { opacity: var(--dim); }
 .candidate-actions { display: flex; gap: 8px; flex: none; }
+@media (max-width: 700px) {
+  .candidate-row { align-items: flex-start; flex-wrap: wrap; }
+  .candidate-actions { width: 100%; flex-wrap: wrap; }
+  .sched-day-actions { flex-wrap: wrap; }
+}
 
 /* Screenshot view: dense, no chrome, everything in one frame so the WhatsApp
    preview does not crop the last names off the bottom. */
@@ -879,6 +891,14 @@ body, .app-shell, .sidebar, .panel, .topbar, .dialog {
 .place-editor input { min-height: 32px; padding: 8px 8px; border: 1px solid var(--input); border-radius: 6px; background: var(--card); color: var(--foreground); }
 .place-chip { display: inline-flex; align-items: center; gap: 8px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--muted); font-size: 11px; }
 .place-chip button { border: 0; background: transparent; color: var(--muted-foreground); cursor: pointer; }
+.requirement-editor { display: grid; gap: 8px; }
+.requirement-editor-row { display: grid; grid-template-columns: minmax(110px, .6fr) minmax(150px, 1.4fr) auto auto; align-items: center; gap: 8px; }
+.requirement-editor-row .checkbox-field { white-space: nowrap; }
+.vacancy-requirements { display: grid; gap: 8px; padding: 0 20px 16px; }
+.vacancy-requirements h3 { margin: 0; font-size: 13px; }
+.vacancy-requirement { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--muted); }
+.vacancy-requirement > span { display: grid; gap: 4px; }
+.vacancy-requirement small { color: var(--muted-foreground); text-transform: capitalize; }
 
 /* ==================================================================
    Touch targets.
@@ -939,8 +959,17 @@ body, .app-shell, .sidebar, .panel, .topbar, .dialog {
      disagreed about where its content began. They shrink together now.
      (ui-ux-pro-max › Layout & Responsive › adaptive gutters by breakpoint) */
   .coming-item, .panel-footer-link, .match-row, .day-action, .sync-result,
-  .slot, .sched-toolbar, .sched-layout, .vacancy-editor,
+  .slot, .sched-toolbar, .sched-layout, .vacancy-editor, .requirement-editor-row,
   .standing-head, .standing-row, .standing-panel .sched-empty { padding-inline: 12px; }
   /* Keeps its hanging indent, just proportionally smaller. */
   .schedule-lines { padding-inline: 24px 12px; }
+  .requirement-editor-row { grid-template-columns: minmax(0, 1fr); }
 }
+
+.auth-form { display: flex; flex-direction: column; gap: 12px; }
+.auth-form label { display: flex; flex-direction: column; gap: 6px; color: var(--muted-foreground); font-size: var(--text-body); }
+.auth-form input { width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid var(--input); border-radius: var(--r-md); background: var(--card); color: var(--foreground); }
+.auth-form .button { width: 100%; justify-content: center; }
+.auth-notice { padding: 10px; border: 1px solid var(--tone-ok-line); border-radius: var(--r-md); background: var(--tone-ok-plate); color: var(--tone-ok-ink) !important; }
+.sidebar-bottom form { display: block; }
+.sidebar-bottom form .nav-item { width: 100%; text-align: left; }

@@ -39,8 +39,10 @@ const scheduled = (workerId: string, vacancyId: string, date: ISODate, roster: R
  *  was on the schedule and nobody touched the cell. A no-show is worth
  *  nothing, which is why the default is not applied blindly. */
 export function hoursOn(input: ReportInput, workerId: string, date: ISODate): number {
-  const typed = input.entries.find(e => e.workerId === workerId && e.vacancyId === input.vacancy.id && e.date === date)
-  if (typed) return typed.hours
+  const entries = input.entries.filter(e => e.workerId === workerId && e.vacancyId === input.vacancy.id && e.date === date)
+  const manual = entries.find(entry => entry.manual)
+  if (manual) return manual.hours
+  if (entries.length) return entries.reduce((sum, entry) => sum + entry.hours, 0)
   if (input.vacancy.defaultHours !== null && scheduled(workerId, input.vacancy.id, date, input.roster)) return input.vacancy.defaultHours
   return 0
 }

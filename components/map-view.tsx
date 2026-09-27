@@ -5,7 +5,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { Minus, Plus } from 'lucide-react'
 import { AppShell, Badge, PageHeading, Panel, StateBlock } from './app-shell'
-import { assignments, leaves, roster, vacancies, workers } from '@/lib/mock-data'
+import { useWorkforceData } from './workforce-data-context'
 import { dayStatus } from '@/lib/derive'
 import { travelFor, withinDrive, TRAVEL_COMPUTED_AT, TRAVEL_PROFILE } from '@/lib/travel'
 import { formatDate, TODAY } from '@/lib/types'
@@ -30,6 +30,7 @@ type Filter = 'all' | 'free' | 'working'
  *  with a hundred vacancies, hunting for one in a dropdown is worse than
  *  opening the vacancy you were already looking at. */
 export function MapPanel({ vacancyId }: { vacancyId?: string }) {
+  const { leaves, roster, vacancies, workers } = useWorkforceData()
   const sites = vacancies.filter(v => v.lat !== null && v.lon !== null)
   const [chosen, setChosen] = useState(vacancyId ?? sites[0]?.id ?? '')
   const siteId = vacancyId ?? chosen
@@ -49,15 +50,15 @@ export function MapPanel({ vacancyId }: { vacancyId?: string }) {
      but recreating the array on every render made every memo downstream of it
      recompute, which re-ran the marker effect, which refitted the map. That is
      how selecting somebody was resetting the zoom. */
-  const active = useMemo(() => workers.filter(w => w.status === 'active'), [])
+  const active = useMemo(() => workers.filter(w => w.status === 'active'), [workers])
   const stateOf = (workerId: string) => dayStatus(workerId,TODAY,roster, leaves, vacancies)
-  const workerById = useMemo(() => new Map(workers.map(w => [w.id, w])), [])
+  const workerById = useMemo(() => new Map(workers.map(w => [w.id, w])), [workers])
 
   const pool = useMemo(
     () => active
       .filter(w => filter === 'all' || (filter === 'free' ? stateOf(w.id) === 'free' : stateOf(w.id) === 'working'))
-      .filter(w => !carOnly || w.hasCar),
-    [active, filter, carOnly],
+      .filter(w => !carOnly || w.hasCar === true),
+    [active, filter, carOnly, roster, leaves, vacancies],
   )
   const { inside, outside, unknown } = useMemo(
     () => withinDrive(pool.map(w => w.id), siteId, radius),

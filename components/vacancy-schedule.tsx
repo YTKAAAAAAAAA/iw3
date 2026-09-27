@@ -1,15 +1,80 @@
 'use client'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { ChevronLeft, ChevronRight, Plus, Repeat, Share2, Wand2, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download, Eye, EyeOff, Plus, Repeat, Share2, Users, Wand2, X } from 'lucide-react'
 import { Badge, Panel, StateBlock, TimeField, useExit } from './app-shell'
-import { demand as seedDemand, leaves, offers as seedOffers, roster as seedRoster, standing as seedStanding, vacancies, workers } from '@/lib/mock-data'
+import { useWorkforceData } from './workforce-data-context'
+import type { CandidateVisibility } from './workforce-data-context'
 import { alreadyOnVacancy, assignmentOn, availabilityLabel, availabilityOver, blockOn, endFor, isCourseDay, shiftsOverlap, slotTimeLabel, startFor, timingOf } from '@/lib/derive'
 import { travelFor } from '@/lib/travel'
+import { assessRequirements } from '@/lib/requirement-fit'
 import { addDays, formatDate, isoWeek, weekDates, weekdayLabel, weekdayOf, WEEKDAYS, TODAY } from '@/lib/types'
-import type { Demand, Offer, RosterEntry, StandingAssignment, Vacancy, Weekday } from '@/lib/types'
+import type { Demand, Offer, RosterEntry, StandingAssignment, Vacancy, Weekday, Worker } from '@/lib/types'
 
 type View = 'day' | 'week' | 'month'
+type SavedSchedule = {
+  revision: number
+  demand: Demand[]
+  roster: RosterEntry[]
+  standing: StandingAssignment[]
+  offers: Offer[]
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+function parseSavedSchedule(value: unknown, vacancyId: string): SavedSchedule | null {
+  if (!isRecord(value) || value.vacancyId !== vacancyId || !Number.isSafeInteger(value.revision)
+    || (value.revision as number) < 0 || !Array.isArray(value.demand)
+    || !Array.isArray(value.roster) || !Array.isArray(value.standing) || !Array.isArray(value.offers)) return null
+  const demand = value.demand
+  if (!demand.every(row => isRecord(row) && typeof row.id === 'string' && row.vacancyId === vacancyId
+    && typeof row.date === 'string' && (row.placeId === null || typeof row.placeId === 'string')
+    && (row.section === null || typeof row.section === 'string') && Number.isSafeInteger(row.headcount)
+    && (row.start === null || typeof row.start === 'string') && (row.end === null || typeof row.end === 'string')
+    && (row.note === null || typeof row.note === 'string'))) return null
+  const roster = value.roster
+  if (!roster.every(row => isRecord(row) && typeof row.id === 'string' && row.vacancyId === vacancyId
+    && typeof row.date === 'string' && typeof row.placeId === 'string'
+    && (row.section === null || typeof row.section === 'string')
+    && (row.workerId === null || typeof row.workerId === 'string') && typeof row.extra === 'boolean'
+    && (row.standingId === null || typeof row.standingId === 'string')
+    && (row.start === null || typeof row.start === 'string') && (row.end === null || typeof row.end === 'string')
+    && (row.note === null || typeof row.note === 'string'))) return null
+  const standing = value.standing
+  if (!standing.every(row => isRecord(row) && typeof row.id === 'string' && row.vacancyId === vacancyId
+    && typeof row.workerId === 'string' && (row.placeId === null || typeof row.placeId === 'string')
+    && (row.section === null || typeof row.section === 'string')
+    && Array.isArray(row.weekdays) && row.weekdays.every(day => WEEKDAYS.includes(day as Weekday))
+    && (row.start === null || typeof row.start === 'string') && (row.end === null || typeof row.end === 'string')
+    && typeof row.from === 'string' && (row.to === null || typeof row.to === 'string')
+    && (row.note === null || typeof row.note === 'string'))) return null
+  const offers = value.offers
+  if (!offers.every(row => isRecord(row) && typeof row.id === 'string' && row.vacancyId === vacancyId
+    && typeof row.workerId === 'string' && (row.date === null || typeof row.date === 'string')
+    && (row.status === 'offered' || row.status === 'declined')
+    && (row.note === null || typeof row.note === 'string') && typeof row.at === 'string')) return null
+  return {
+    revision: value.revision as number,
+    demand: demand as Demand[],
+    roster: roster.map(row => ({
+      ...(row as RosterEntry),
+      outcome: 'planned',
+      actualEnd: null,
+      coversShiftId: null,
+    })),
+    standing: standing as StandingAssignment[],
+    offers: offers as Offer[],
+  }
+}
+
+const storedId = (id: string) => /^[1-9]\d{0,14}$/.test(id)
+
+const isISODate = (value: string | null): value is string => {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const date = new Date(`${value}T00:00:00Z`)
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
+}
 
 const placeName = (v: Vacancy, id: string | null) => (id ? v.places.find(p => p.id === id)?.name ?? id : null)
 const slotTitle = (v: Vacancy, row: Demand) => [placeName(v, row.placeId), row.section].filter(Boolean).join(' · ') || 'Whole site'
@@ -22,30 +87,223 @@ const firstOfMonth = (iso: string, delta = 0) => {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-01`
 }
 
+function assessWorkerRequirements(vacancy: Vacancy, worker: Worker) {
+  const assessment = assessRequirements(vacancy.requirements ?? [], worker)
+  if (vacancy.carOnly && worker.hasCar === null) assessment.warnings.unshift('Verify own transport')
+  return assessment
+}
+
 export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
+  const { demand: seedDemand, leaves, offers: seedOffers, roster: seedRoster, standing: seedStanding, vacancies, workers, candidateVisibility: seedVisibility } = useWorkforceData()
   const [view, setView] = useState<View>(vacancy.schedule.horizon)
-  /* Switching from a month to a week should land somewhere meaningful. The
-     month anchor sits on the 1st, and the week of the 1st is mostly the
-     previous month — so if today falls inside the month being viewed, hand
-     the narrower view today instead. */
-  const changeView = (next: View) => {
-    if (view === 'month' && next !== 'month' && TODAY.slice(0, 7) === anchor.slice(0, 7)) setAnchor(TODAY)
-    setView(next)
-  }
+  const storageKey = `iaw-schedule-date:${vacancy.id}`
   const [anchor, setAnchor] = useState(TODAY)
+  const [restoredStorageKey, setRestoredStorageKey] = useState<string | null>(null)
+  const [dateStorageError, setDateStorageError] = useState('')
+  const changeView = (next: View) => setView(next)
   const [rows, setRows] = useState<Demand[]>(seedDemand)
   const [plan, setPlan] = useState<RosterEntry[]>(seedRoster)
   const [arrangements, setArrangements] = useState<StandingAssignment[]>(seedStanding)
+  const [scheduleReady, setScheduleReady] = useState(false)
+  const [scheduleLoadError, setScheduleLoadError] = useState('')
+  const [scheduleSaveError, setScheduleSaveError] = useState('')
+  const [scheduleSaveStatus, setScheduleSaveStatus] = useState('')
+  const [loadRetry, setLoadRetry] = useState(0)
+  const [saveRetry, setSaveRetry] = useState(0)
+  const revisionRef = useRef(0)
+  const latestScheduleRef = useRef<{ demand: Demand[]; roster: RosterEntry[]; standing: StandingAssignment[]; offers: Offer[] } | null>(null)
+  const previousDemandRef = useRef<Demand[]>([])
+  const previousRosterRef = useRef<RosterEntry[]>([])
+  const deletedDemandIdsRef = useRef(new Set<string>())
+  const deletedRosterIdsRef = useRef(new Set<string>())
+  const ignoredRosterIdsRef = useRef(new Set<string>())
+  const savedSignatureRef = useRef('')
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve())
   const [offerLog, setOfferLog] = useState<Offer[]>(seedOffers)
   const [openSlot, setOpenSlot] = useState<string | null>(null)
   const [sharing, setSharing] = useState(false)
   const [draft, setDraft] = useState<{ date: string } | null>(null)
   const [replacing, setReplacing] = useState<StandingAssignment | null>(null)
   const [addingPerson, setAddingPerson] = useState(false)
+  const [availableListDate, setAvailableListDate] = useState<string | null>(null)
+  const [candidateVisibility, setCandidateVisibility] = useState(seedVisibility.filter(item => item.vacancyId === vacancy.id))
   /* The schedule is the long part of this page, and most visits are about who
      normally works here rather than about a particular day — so it stays
      folded until asked for. */
   const [schedule, setSchedule] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    setScheduleReady(false)
+    setScheduleLoadError('')
+    fetch(`/api/vacancies/${encodeURIComponent(vacancy.id)}/schedule`, { cache: 'no-store' })
+      .then(async response => {
+        const result: unknown = await response.json()
+        if (!response.ok) {
+          const message = isRecord(result) && typeof result.error === 'string' ? result.error : 'Could not load the schedule.'
+          throw new Error(message)
+        }
+        const snapshot = parseSavedSchedule(result, vacancy.id)
+        if (!snapshot) throw new Error('The server returned an invalid schedule.')
+        if (cancelled) return
+
+        const otherDemand = rows.filter(row => row.vacancyId !== vacancy.id)
+        const otherRoster = plan.filter(row => row.vacancyId !== vacancy.id)
+        const otherStanding = arrangements.filter(row => row.vacancyId !== vacancy.id)
+        const otherOffers = offerLog.filter(row => row.vacancyId !== vacancy.id)
+        const nextDemand = [...otherDemand, ...snapshot.demand]
+        const nextRoster = [...otherRoster, ...snapshot.roster]
+        const nextStanding = [...otherStanding, ...snapshot.standing]
+        revisionRef.current = snapshot.revision
+        deletedDemandIdsRef.current.clear()
+        deletedRosterIdsRef.current.clear()
+        ignoredRosterIdsRef.current.clear()
+        previousDemandRef.current = snapshot.demand
+        previousRosterRef.current = snapshot.roster
+        latestScheduleRef.current = {
+          demand: snapshot.demand, roster: snapshot.roster, standing: snapshot.standing, offers: snapshot.offers,
+        }
+        savedSignatureRef.current = JSON.stringify({
+          demand: snapshot.demand,
+          roster: snapshot.roster.map(({ outcome: _outcome, actualEnd: _actualEnd, coversShiftId: _coversShiftId, ...row }) => row),
+          standing: snapshot.standing,
+          offers: snapshot.offers,
+        })
+        setRows(nextDemand)
+        setPlan(nextRoster)
+        setArrangements(nextStanding)
+        setOfferLog([...otherOffers, ...snapshot.offers])
+        setScheduleReady(true)
+      })
+      .catch(cause => {
+        if (!cancelled) setScheduleLoadError(cause instanceof Error ? cause.message : 'Could not load the schedule.')
+      })
+    return () => { cancelled = true }
+  // Initial state is replaced by the vacancy-scoped saved snapshot once.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vacancy.id, loadRetry])
+
+  useEffect(() => {
+    if (!scheduleReady) return
+    const currentDemand = rows.filter(row => row.vacancyId === vacancy.id)
+    const currentRoster = plan.filter(row => row.vacancyId === vacancy.id)
+    for (const row of previousDemandRef.current) {
+      if (storedId(row.id) && !currentDemand.some(current => current.id === row.id)) {
+        deletedDemandIdsRef.current.add(row.id)
+      }
+    }
+    for (const row of previousRosterRef.current) {
+      if (storedId(row.id) && !currentRoster.some(current => current.id === row.id)
+        && !ignoredRosterIdsRef.current.has(row.id)) {
+        deletedRosterIdsRef.current.add(row.id)
+      }
+    }
+    previousDemandRef.current = currentDemand
+    previousRosterRef.current = currentRoster
+    const currentStanding = arrangements.filter(row => row.vacancyId === vacancy.id)
+    const currentOffers = offerLog.filter(row => row.vacancyId === vacancy.id)
+    latestScheduleRef.current = { demand: currentDemand, roster: currentRoster, standing: currentStanding, offers: currentOffers }
+  }, [scheduleReady, vacancy.id, rows, plan, arrangements, offerLog])
+
+  useEffect(() => {
+    if (!scheduleReady) return
+    const timer = window.setTimeout(() => {
+      saveQueueRef.current = saveQueueRef.current.then(async () => {
+        const current = latestScheduleRef.current
+        if (!current) return
+        const demand = current.demand.map(({ id, vacancyId, date, placeId, section, headcount, start, end, note }) =>
+          ({ id, vacancyId, date, placeId, section, headcount, start, end, note }))
+        const roster = current.roster.map(({ id, vacancyId, date, placeId, section, workerId, extra, extraReason, standingId, start, end, note }) =>
+          ({ id, vacancyId, date, placeId, section, workerId, extra, extraReason, standingId, start, end, note }))
+        const standing = current.standing
+        const offers = current.offers
+        const deleteDemandIds = [...deletedDemandIdsRef.current]
+        const deleteRosterIds = [...deletedRosterIdsRef.current]
+        const signature = JSON.stringify({ demand, roster, standing, offers })
+        if (signature === savedSignatureRef.current && !deleteDemandIds.length && !deleteRosterIds.length) return
+
+        setScheduleSaveStatus('Saving schedule…')
+        setScheduleSaveError('')
+        try {
+          const response = await fetch(`/api/vacancies/${encodeURIComponent(vacancy.id)}/schedule`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              revision: revisionRef.current, demand, roster, standing, offers, deleteDemandIds, deleteRosterIds,
+            }),
+          })
+          const result: unknown = await response.json()
+          if (!response.ok) {
+            const message = isRecord(result) && typeof result.error === 'string' ? result.error : 'Could not save the schedule.'
+            throw new Error(message)
+          }
+          if (!isRecord(result) || !Number.isSafeInteger(result.revision) || !isRecord(result.ids)
+            || !isRecord(result.ids.demand) || !isRecord(result.ids.roster)
+            || !Array.isArray(result.cancelledShiftIds)
+            || !result.cancelledShiftIds.every(id => typeof id === 'string')) {
+            throw new Error('The server returned an invalid schedule save response.')
+          }
+
+          const demandIds = result.ids.demand
+          const rosterIds = result.ids.roster
+          const cancelledIds = new Set(result.cancelledShiftIds)
+          revisionRef.current = result.revision as number
+          for (const id of result.cancelledShiftIds) ignoredRosterIdsRef.current.add(id)
+          setRows(cur => cur.map(row => ({
+            ...row,
+            id: typeof demandIds[row.id] === 'string' ? demandIds[row.id] as string : row.id,
+          })))
+          setPlan(cur => cur.filter(row => !cancelledIds.has(row.id)).map(row => ({
+            ...row,
+            id: typeof rosterIds[row.id] === 'string' ? rosterIds[row.id] as string : row.id,
+          })))
+          for (const id of deleteDemandIds) deletedDemandIdsRef.current.delete(id)
+          for (const id of deleteRosterIds) deletedRosterIdsRef.current.delete(id)
+          const mappedDemand = demand.map(row => ({
+            ...row, id: typeof demandIds[row.id] === 'string' ? demandIds[row.id] as string : row.id,
+          }))
+          const mappedRoster = roster.filter(row => !cancelledIds.has(row.id)).map(row => ({
+            ...row, id: typeof rosterIds[row.id] === 'string' ? rosterIds[row.id] as string : row.id,
+          }))
+          savedSignatureRef.current = JSON.stringify({ demand: mappedDemand, roster: mappedRoster, standing, offers })
+          setScheduleSaveStatus('Schedule saved')
+        } catch (cause) {
+          setScheduleSaveStatus('')
+          setScheduleSaveError(cause instanceof Error ? cause.message : 'Could not save the schedule.')
+        }
+      }).catch(cause => {
+        setScheduleSaveStatus('')
+        setScheduleSaveError(cause instanceof Error ? cause.message : 'Could not save the schedule.')
+      })
+    }, 500)
+    return () => window.clearTimeout(timer)
+  }, [scheduleReady, saveRetry, vacancy.id, rows, plan, arrangements, offerLog])
+
+  useEffect(() => {
+    let savedDate: string | null = null
+    try {
+      savedDate = window.localStorage.getItem(storageKey)
+    } catch (cause) {
+      setDateStorageError(cause instanceof Error ? cause.message : 'Could not read the saved schedule date.')
+    }
+    if (isISODate(savedDate)) setAnchor(savedDate)
+    setRestoredStorageKey(storageKey)
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === storageKey && isISODate(event.newValue)) setAnchor(event.newValue)
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [storageKey])
+
+  useEffect(() => {
+    if (restoredStorageKey !== storageKey) return
+    try {
+      window.localStorage.setItem(storageKey, anchor)
+      setDateStorageError('')
+    } catch (cause) {
+      setDateStorageError(cause instanceof Error ? cause.message : 'Could not save the schedule date in this browser.')
+    }
+  }, [anchor, restoredStorageKey, storageKey])
 
   const week = isoWeek(anchor)
   const days = useMemo(() => {
@@ -204,6 +462,18 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
      and read by every row below. */
   const timing = timingOf(vacancy.schedule)
 
+  if (!scheduleReady) {
+    return <Panel className="full-panel">
+      <StateBlock
+        title={scheduleLoadError ? 'Could not load the saved schedule' : 'Loading saved schedule'}
+        description={scheduleLoadError || 'The saved shifts and assignments are being loaded.'}
+      />
+      {scheduleLoadError && <div className="form-footer">
+        <button className="button button-secondary" onClick={() => setLoadRetry(value => value + 1)}>Try again</button>
+      </div>}
+    </Panel>
+  }
+
   return (
     <>
       {/* Who normally works here. For a one-person job this panel is the whole
@@ -239,6 +509,12 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
         })}
       </div>
 
+      <p className="dialog-note" role={scheduleSaveError ? 'alert' : 'status'}>
+        {scheduleSaveError
+          ? <>Schedule changes were not saved: {scheduleSaveError} <button className="text-button" onClick={() => setSaveRetry(value => value + 1)}>Retry save</button></>
+          : scheduleSaveStatus || 'Schedule saves automatically'}
+      </p>
+
       <button className={`sched-toggle ${schedule ? 'open' : ''}`} onClick={() => setSchedule(x => !x)} aria-expanded={schedule}>
         <ChevronRight />
         <strong>Schedule</strong>
@@ -265,6 +541,7 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
         </div>
         <button className="button button-secondary" onClick={() => setSharing(true)}><Share2 />Share view</button>
       </div>
+      {dateStorageError && <p className="dialog-note schedule-storage-note" role="status">The selected date may not persist in this browser: {dateStorageError}</p>}
 
       <div className={`sched-layout ${active ? 'with-picker' : ''}`}>
         <div className={`sched-days view-${view}`}>
@@ -277,7 +554,10 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
               <Panel key={date} className={`sched-day ${date === TODAY ? 'today' : ''} ${quiet ? 'quiet' : ''}`}>
                 <div className="sched-day-head">
                   <div><strong>{weekdayLabel[weekdayOf(date)]}</strong><span>{formatDate(date)}</span></div>
-                  <button className="add-shift" onClick={() => setDraft({ date })}><Plus />Add slot</button>
+                  <div className="sched-day-actions">
+                    {vacancy.requiresAvailableList && <button className="button button-secondary button-small" onClick={() => setAvailableListDate(date)}><Users />Available people</button>}
+                    <button className="add-shift" onClick={() => setDraft({ date })}><Plus />Add slot</button>
+                  </div>
                 </div>
                 {!slots.length && !quiet && <p className="sched-empty">Not a working day.</p>}
                 {slots.map(row => {
@@ -346,6 +626,7 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
               <button className="icon-button" onClick={() => setOpenSlot(null)} aria-label="Close"><X /></button>
             </div>
             <CandidateList vacancy={vacancy} row={active} plan={plan} offerFor={offerFor}
+              visibility={candidateVisibility} setVisibility={setCandidateVisibility}
               onAssign={(id, extra) => assign(active, id, extra)}
               onOffer={(id, status) => setOffer(id, active.date, status)} />
           </Panel>
@@ -370,11 +651,14 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
       {replacing && <ReplaceDialog vacancy={vacancy} arrangement={replacing} plan={plan} onCancel={() => setReplacing(null)}
         onSave={(incoming, from, to, reason) => { replaceOver(replacing, incoming, from, to, reason); setReplacing(null) }} />}
       {sharing && <ShareView vacancy={vacancy} days={days} slotsOn={slotsOn} shiftsIn={shiftsIn} onClose={() => setSharing(false)} />}
+      {availableListDate && <AvailablePeopleImage vacancy={vacancy} date={availableListDate} plan={plan} visibility={candidateVisibility}
+        onClose={() => setAvailableListDate(null)} />}
     </>
   )
 }
 
 function useCandidates(vacancy: Vacancy, date: string, slot: { placeId: string | null; section: string | null; start: string | null; end: string | null }, plan: RosterEntry[]) {
+  const { leaves, vacancies, workers } = useWorkforceData()
   return useMemo(() => workers
     .filter(w => w.status === 'active' && w.companyAccess.includes(vacancy.companyId))
     .map(w => {
@@ -392,9 +676,10 @@ function useCandidates(vacancy: Vacancy, date: string, slot: { placeId: string |
       /* Some sites cannot be reached without a car at the hours we staff
          them, so this is a hard block rather than a hint — being close by
          does not help if there is no way to get there at 05:30. */
-      const noCar = vacancy.carOnly && !w.hasCar
-      return { w, busy, onLeave, noCar, duplicate, onCourse, elsewhere: assignmentOn(w.id, date, null, plan), travel: travelFor(w.id, vacancy.id) }
-    }), [vacancy, date, slot.placeId, slot.section, slot.start, slot.end, plan])
+      const noCar = vacancy.carOnly && w.hasCar === false
+      return { w, busy, onLeave, noCar, duplicate, onCourse, requirements: assessWorkerRequirements(vacancy, w),
+        elsewhere: assignmentOn(w.id, date, null, plan), travel: travelFor(w.id, vacancy.id) }
+    }), [vacancy, date, slot.placeId, slot.section, slot.start, slot.end, plan, leaves, vacancies, workers])
 }
 
 /** Own transport as a filter rather than a hint.
@@ -416,43 +701,101 @@ function CarFilter({ on, onChange }: { on: boolean; onChange: (on: boolean) => v
   )
 }
 
-function CandidateList({ vacancy, row, plan, offerFor, onAssign, onOffer }: {
+function CandidateList({ vacancy, row, plan, offerFor, visibility, setVisibility, onAssign, onOffer }: {
   vacancy: Vacancy; row: Demand; plan: RosterEntry[]
+  visibility: CandidateVisibility[]
+  setVisibility: (update: (current: CandidateVisibility[]) => CandidateVisibility[]) => void
   offerFor: (workerId: string, date: string) => Offer | null
   onAssign: (workerId: string, extra: boolean) => void
   onOffer: (workerId: string, status: 'offered' | 'declined' | null) => void
 }) {
+  const { leaves, vacancies, workers } = useWorkforceData()
   /* A site that can only be reached by car already blocks everyone else, so
      the switch would be a no-op there and is not offered. */
   const [carOnly, setCarOnly] = useState(false)
+  const [showEveryone, setShowEveryone] = useState(false)
+  const [pendingVisibility, setPendingVisibility] = useState<string[]>([])
+  const [visibilityError, setVisibilityError] = useState('')
   const base = useCandidates(vacancy, row.date, row, plan)
   const candidates = base.map(c => ({ ...c, offer: offerFor(c.w.id, row.date) }))
     /* Free and near the top, already-refused at the bottom so nobody is rung
        twice with the same offer by accident. */
     .sort((a, b) => Number(a.offer?.status === 'declined') - Number(b.offer?.status === 'declined')
-      || Number(a.busy || a.onLeave || a.noCar || a.duplicate || a.onCourse) - Number(b.busy || b.onLeave || b.noCar || b.duplicate || b.onCourse)
+      || Number(a.busy || a.onLeave || a.noCar || a.duplicate || a.onCourse || a.requirements.blocked.length > 0)
+        - Number(b.busy || b.onLeave || b.noCar || b.duplicate || b.onCourse || b.requirements.blocked.length > 0)
       || (a.travel?.km ?? 1e9) - (b.travel?.km ?? 1e9))
-  const shown = carOnly ? candidates.filter(c => c.w.hasCar) : candidates
+  const carFiltered = carOnly ? candidates.filter(c => c.w.hasCar === true) : candidates
+  const isHidden = (workerId: string, date: string) => {
+    const daySetting = visibility.find(item => item.workerId === workerId && item.date === date)
+    if (daySetting) return daySetting.hidden
+    return visibility.find(item => item.workerId === workerId && item.date === null)?.hidden ?? false
+  }
+  const hiddenCount = carFiltered.filter(candidate => isHidden(candidate.w.id, row.date)).length
+  const shown = carFiltered.filter(candidate => showEveryone || !isHidden(candidate.w.id, row.date))
+  const changeVisibility = async (workerId: string, hidden: boolean, reset = false) => {
+    const key = `${workerId}:${row.date}`
+    setPendingVisibility(current => [...current, key])
+    setVisibilityError('')
+    try {
+      const response = await fetch(`/api/vacancies/${encodeURIComponent(vacancy.id)}/candidate-visibility`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(reset ? { workerId, date: null, reset: true } : { workerId, date: hidden ? null : row.date, hidden }),
+      })
+      const result: unknown = await response.json()
+      if (!response.ok) {
+        const message = typeof result === 'object' && result !== null && 'error' in result && typeof result.error === 'string'
+          ? result.error : 'Could not update this person’s visibility.'
+        setVisibilityError(message)
+        return
+      }
+      setVisibility(current => reset
+        ? [...current.filter(item => item.workerId !== workerId), { vacancyId: vacancy.id, workerId, date: null, hidden: false }]
+        : [...current.filter(item => !(item.workerId === workerId && item.date === (hidden ? null : row.date))),
+          { vacancyId: vacancy.id, workerId, date: hidden ? null : row.date, hidden }])
+    } catch (cause) {
+      setVisibilityError(cause instanceof Error ? cause.message : 'Could not update this person’s visibility.')
+    } finally {
+      setPendingVisibility(current => current.filter(item => item !== key))
+    }
+  }
 
   if (!candidates.length) return <StateBlock title="Nobody holds this contract" description="No active worker has access to this client." />
   return (
     <div className="candidate-list">
       {!vacancy.carOnly && <CarFilter on={carOnly} onChange={setCarOnly} />}
+      <div className="candidate-visibility-toolbar">
+        <button className="button button-secondary button-small" onClick={() => setShowEveryone(value => !value)}>
+          {showEveryone ? <><EyeOff />Show available only</> : <><Eye />Show everyone{hiddenCount ? ` · ${hiddenCount} hidden` : ''}</>}
+        </button>
+      </div>
+      {visibilityError && <p className="dialog-note" role="alert">{visibilityError}</p>}
       {!shown.length && <StateBlock title="Nobody here has a car" description="Switch the filter off to see everyone who holds this contract." />}
-      {shown.map(({ w, busy, onLeave, noCar, duplicate, onCourse, elsewhere, travel, offer }) => {
-        const blocked = busy || onLeave || noCar || duplicate || onCourse
+      {shown.map(({ w, busy, onLeave, noCar, duplicate, onCourse, requirements, elsewhere, travel, offer }) => {
+        const blocked = busy || onLeave || noCar || duplicate || onCourse || requirements.blocked.length > 0
+        const hidden = isHidden(w.id, row.date)
+        const pending = pendingVisibility.includes(`${w.id}:${row.date}`)
         return (
-          <div key={w.id} className={`candidate-row ${offer?.status === 'declined' ? 'declined' : ''}`}>
+          <div key={w.id} className={`candidate-row ${offer?.status === 'declined' ? 'declined' : ''} ${hidden ? 'candidate-hidden' : ''}`}>
             <span>
               <strong>{w.fullName}</strong>
               <small>
                 {travel ? `${travel.km} km · ${travel.minutes} min` : 'no travel on record'}
                 {duplicate ? ' · already on this job today' : noCar ? ' · no car — this site needs one' : onCourse ? ' · at a course this weekday' : onLeave ? ' · on leave' : busy ? ` · already on ${vacancies.find(v => v.id === elsewhere?.vacancyId)?.title ?? 'another job'}` : ' · free'}
-                {!vacancy.carOnly && (w.hasCar ? ' · car' : ' · no car')}
+                {!vacancy.carOnly && (w.hasCar === true ? ' · car' : w.hasCar === false ? ' · no car' : ' · car status unverified')}
+                {hidden && ' · hidden from selection'}
+                {requirements.blocked.map(reason => ` · ${reason}`)}
+                {requirements.warnings.map(reason => ` · ${reason}`)}
                 {offer && ` · ${offer.status === 'declined' ? 'declined' : 'offered'}${offer.note ? ` (${offer.note})` : ''}`}
               </small>
             </span>
             <div className="candidate-actions">
+              {hidden
+                ? <>
+                    <button className="button button-secondary button-small" disabled={pending} onClick={() => changeVisibility(w.id, false)}>Show this day</button>
+                    <button className="button button-secondary button-small" disabled={pending} onClick={() => changeVisibility(w.id, false, true)}>Remove from hidden</button>
+                  </>
+                : <button className="button button-secondary button-small" disabled={pending} onClick={() => changeVisibility(w.id, true)}>Hide</button>}
               {offer?.status === 'declined'
                 ? <button className="button button-secondary button-small" onClick={() => onOffer(w.id, null)}>Clear</button>
                 : <button className="button button-secondary button-small" onClick={() => onOffer(w.id, 'declined')}>Declined</button>}
@@ -467,10 +810,109 @@ function CandidateList({ vacancy, row, plan, offerFor, onAssign, onOffer }: {
   )
 }
 
+function AvailablePeopleImage({ vacancy, date, plan, visibility, onClose }: {
+  vacancy: Vacancy; date: string; plan: RosterEntry[]; visibility: CandidateVisibility[]; onClose: () => void
+}) {
+  const { closing, close: dismiss } = useExit(onClose)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [imageError, setImageError] = useState('')
+  const candidates = useCandidates(vacancy, date, { placeId: null, section: null, start: null, end: null }, plan)
+  const people = useMemo(() => candidates
+    .filter(candidate => !candidate.busy && !candidate.onLeave && !candidate.noCar && !candidate.duplicate
+      && !candidate.onCourse && candidate.requirements.blocked.length === 0)
+    .filter(candidate => {
+      const daySetting = visibility.find(item => item.vacancyId === vacancy.id
+        && item.workerId === candidate.w.id && item.date === date)
+      if (daySetting) return !daySetting.hidden
+      return !visibility.find(item => item.vacancyId === vacancy.id
+        && item.workerId === candidate.w.id && item.date === null)?.hidden
+    })
+    .map(candidate => candidate.w.fullName)
+    .sort((a, b) => a.localeCompare(b)), [candidates, date, vacancy.id, visibility])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const rowHeight = 44
+    canvas.width = 1080
+    canvas.height = Math.max(240, 152 + people.length * rowHeight)
+    const context = canvas.getContext('2d')
+    if (!context) {
+      setImageError('This browser could not prepare the image.')
+      return
+    }
+    context.fillStyle = '#ffffff'
+    context.fillRect(0, 0, canvas.width, canvas.height)
+    context.fillStyle = '#172033'
+    context.font = '700 30px Arial, sans-serif'
+    context.fillText(vacancy.title, 48, 52)
+    context.fillStyle = '#526078'
+    context.font = '18px Arial, sans-serif'
+    context.fillText(`${formatDate(date)} · ${people.length} available ${people.length === 1 ? 'person' : 'people'}`, 48, 86)
+    context.strokeStyle = '#dbe2ea'
+    context.beginPath()
+    context.moveTo(48, 112)
+    context.lineTo(canvas.width - 48, 112)
+    context.stroke()
+    people.forEach((name, index) => {
+      const y = 148 + index * rowHeight
+      context.fillStyle = '#526078'
+      context.font = '600 18px Arial, sans-serif'
+      context.fillText(`${index + 1}.`, 54, y)
+      context.fillStyle = '#172033'
+      context.font = '20px Arial, sans-serif'
+      context.fillText(name, 104, y)
+      if (index < people.length - 1) {
+        context.strokeStyle = '#eef1f5'
+        context.beginPath()
+        context.moveTo(48, y + 14)
+        context.lineTo(canvas.width - 48, y + 14)
+        context.stroke()
+      }
+    })
+    setImageError('')
+  }, [date, people, vacancy.title])
+
+  const download = () => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    canvas.toBlob(blob => {
+      if (!blob) {
+        setImageError('Could not export the image. Please try again.')
+        return
+      }
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${vacancy.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${date}-available-people.png`
+      link.click()
+      URL.revokeObjectURL(url)
+    }, 'image/png')
+  }
+
+  return (
+    <div className={`dialog-backdrop ${closing ? 'closing' : ''}`} onClick={dismiss}>
+      <div className="dialog dialog-wide available-people-dialog" onClick={event => event.stopPropagation()}>
+        <div className="panel-header">
+          <div><h2>Available people</h2><p>{formatDate(date)} · {people.length} people, numbered for the client</p></div>
+          <button className="icon-button" onClick={dismiss} aria-label="Close"><X /></button>
+        </div>
+        <div className="available-image-preview"><canvas ref={canvasRef} aria-label={`Numbered available people for ${formatDate(date)}`} /></div>
+        {imageError && <p className="dialog-note" role="alert">{imageError}</p>}
+        <div className="form-footer">
+          <button className="button button-secondary" onClick={dismiss}>Close</button>
+          <button className="button button-primary" onClick={download}><Download />Download PNG</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ReplaceDialog({ vacancy, arrangement, plan, onCancel, onSave }: {
   vacancy: Vacancy; arrangement: StandingAssignment; plan: RosterEntry[]
   onCancel: () => void; onSave: (incoming: string, from: string, to: string, reason: string) => void
 }) {
+  const { leaves, workers } = useWorkforceData()
   const { closing, close: dismiss } = useExit(onCancel)
   const outgoing = workers.find(w => w.id === arrangement.workerId)
   const [from, setFrom] = useState(TODAY)
@@ -489,9 +931,10 @@ function ReplaceDialog({ vacancy, arrangement, plan, onCancel, onSave }: {
      alone was the hole through which somebody could be put on a job they
      already work later in the week — twice on the same day. */
   const candidates = useCandidates(vacancy, from, arrangement, plan).filter(c => c.w.id !== arrangement.workerId)
-    .filter(c => !carOnly || c.w.hasCar)
+    .filter(c => !carOnly || c.w.hasCar === true)
     .map(c => ({ ...c, span: availabilityOver(c.w, touchedDays, vacancy.id, plan, leaves) }))
-    .sort((a, b) => Number(!a.span.fullyFree) - Number(!b.span.fullyFree)
+    .sort((a, b) => Number(a.requirements.blocked.length > 0) - Number(b.requirements.blocked.length > 0)
+      || Number(!a.span.fullyFree) - Number(!b.span.fullyFree)
       || a.span.taken.length - b.span.taken.length
       || (a.travel?.km ?? 1e9) - (b.travel?.km ?? 1e9))
   const dayCount = Math.max(0, Math.round((new Date(`${to}T12:00:00Z`).getTime() - new Date(`${from}T12:00:00Z`).getTime()) / 86400000) + 1)
@@ -523,17 +966,18 @@ function ReplaceDialog({ vacancy, arrangement, plan, onCancel, onSave }: {
           {!vacancy.carOnly && <CarFilter on={carOnly} onChange={on => { setCarOnly(on); setPick(null) }} />}
           {!candidates.length && <StateBlock title={carOnly ? 'Nobody here has a car' : 'Nobody else holds this contract'}
             description={carOnly ? 'Switch the filter off to see everyone.' : 'No other active worker has access to this client.'} />}
-          {candidates.map(({ w, noCar, travel, span }) => {
+          {candidates.map(({ w, noCar, travel, span, requirements }) => {
             /* Nobody free on a single one of the days is no use as cover. */
-            const useless = noCar || !span.free.length
+            const useless = noCar || requirements.blocked.length > 0 || !span.free.length
             return (
               <button key={w.id} type="button" className={`candidate-row ${pick === w.id ? 'selected' : ''}`}
                 disabled={useless} onClick={() => setPick(w.id)}>
                 <span><strong>{w.fullName}</strong>
                   <small>{travel ? `${travel.km} km · ${travel.minutes} min` : 'no travel on record'}{noCar ? ' · no car' : ''}{!vacancy.carOnly && (w.hasCar ? ' · car' : ' · no car')}
+                    {[...requirements.blocked, ...requirements.warnings].map(reason => ` · ${reason}`).join('')}
                     <br />{availabilityLabel(span)}</small></span>
-                <Badge tone={noCar ? 'orange' : span.fullyFree ? 'green' : span.free.length ? 'blue' : 'orange'}>
-                  {noCar ? 'No car' : span.fullyFree ? 'Free' : span.free.length ? `${span.free.length}/${span.days.length}` : 'Unavailable'}
+                <Badge tone={noCar || requirements.blocked.length ? 'orange' : span.fullyFree ? 'green' : span.free.length ? 'blue' : 'orange'}>
+                  {noCar ? 'No car' : requirements.blocked.length ? 'Does not meet requirements' : span.fullyFree ? 'Free' : span.free.length ? `${span.free.length}/${span.days.length}` : 'Unavailable'}
                 </Badge>
               </button>
             )
@@ -555,6 +999,7 @@ const HORIZON_DAYS = 28
 function PersonDialog({ vacancy, plan, onCancel, onSave }: {
   vacancy: Vacancy; plan: RosterEntry[]; onCancel: () => void; onSave: (a: StandingAssignment) => void
 }) {
+  const { leaves, workers } = useWorkforceData()
   const { closing, close: dismiss } = useExit(onCancel)
   const [workerId, setWorkerId] = useState('')
   const [weekdays, setWeekdays] = useState<Weekday[]>(vacancy.schedule.weekdays.length ? vacancy.schedule.weekdays : ['mon', 'tue', 'wed', 'thu', 'fri'])
@@ -577,11 +1022,13 @@ function PersonDialog({ vacancy, plan, onCancel, onSave }: {
   }, [startFromDate, vacancy.endDate, weekdays])
 
   const candidates = eligible
-    .filter(w => !carOnly || w.hasCar)
-    .map(w => ({ w, span: availabilityOver(w, days, vacancy.id, plan, leaves), travel: travelFor(w.id, vacancy.id), noCar: vacancy.carOnly && !w.hasCar }))
+    .filter(w => !carOnly || w.hasCar === true)
+    .map(w => ({ w, span: availabilityOver(w, days, vacancy.id, plan, leaves),
+      travel: travelFor(w.id, vacancy.id), noCar: vacancy.carOnly && w.hasCar === false,
+      requirements: assessWorkerRequirements(vacancy, w) }))
     /* Free for the whole run first, then whoever frees up soonest, then by
        distance — the order the office would sort them in by hand. */
-    .sort((a, b) => Number(a.noCar) - Number(b.noCar)
+    .sort((a, b) => Number(a.noCar || a.requirements.blocked.length > 0) - Number(b.noCar || b.requirements.blocked.length > 0)
       || Number(!a.span.fullyFree) - Number(!b.span.fullyFree)
       || (a.span.freeFrom ?? '9999').localeCompare(b.span.freeFrom ?? '9999')
       || a.span.taken.length - b.span.taken.length
@@ -608,16 +1055,17 @@ function PersonDialog({ vacancy, plan, onCancel, onSave }: {
         {/* A dropdown answers "who exists". The question here is who is free,
             and if not now then from when — so the list says it. */}
         <div className="candidate-list">
-          {candidates.map(({ w, span, travel, noCar }) => (
+          {candidates.map(({ w, span, travel, noCar, requirements }) => (
             <button key={w.id} type="button" className={`candidate-row ${workerId === w.id ? 'selected' : ''}`}
-              disabled={noCar || !span.free.length} onClick={() => setWorkerId(w.id)}>
+              disabled={noCar || requirements.blocked.length > 0 || !span.free.length} onClick={() => setWorkerId(w.id)}>
               <span><strong>{w.fullName}</strong>
                 <small>{travel ? `${travel.km} km · ${travel.minutes} min` : 'no travel on record'}
                   {w.courseDays.length ? ` · course ${w.courseDays.map(d => weekdayLabel[d]).join(' ')}` : ''}
                   {noCar ? ' · no car — this site needs one' : ''}
+                  {[...requirements.blocked, ...requirements.warnings].map(reason => ` · ${reason}`).join('')}
                   <br />{availabilityLabel(span)}</small></span>
-              <Badge tone={noCar ? 'orange' : span.fullyFree ? 'green' : span.free.length ? 'blue' : 'orange'}>
-                {noCar ? 'No car' : span.fullyFree ? 'Free' : span.free.length ? `${span.free.length}/${span.days.length}` : 'Busy'}
+              <Badge tone={noCar || requirements.blocked.length ? 'orange' : span.fullyFree ? 'green' : span.free.length ? 'blue' : 'orange'}>
+                {noCar ? 'No car' : requirements.blocked.length ? 'Does not meet requirements' : span.fullyFree ? 'Free' : span.free.length ? `${span.free.length}/${span.days.length}` : 'Busy'}
               </Badge>
             </button>
           ))}
@@ -699,6 +1147,7 @@ function ShareView({ vacancy, days, slotsOn, shiftsIn, onClose }: {
   slotsOn: (date: string) => Demand[]; shiftsIn: (row: Demand) => RosterEntry[]
   onClose: () => void
 }) {
+  const { workers } = useWorkforceData()
   const { closing, close: dismiss } = useExit(onClose)
   /* Only the days with something on them: an empty column is dead space in a
      screenshot, and dead space is what makes the names small in WhatsApp's

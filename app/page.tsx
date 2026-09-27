@@ -1,5 +1,12 @@
+import { requireSession } from '@/lib/auth/guard'
 import { Overview } from '@/components/workforce-views'
+import { WorkforceDataProvider } from '@/components/workforce-data-context'
+import { getWarehouseAppData } from '@/lib/db/workforce'
 
-export default function Page() {
-  return <Overview />
+export const dynamic = 'force-dynamic'
+
+export default async function Page() {
+  await requireSession()
+  const data = await getWarehouseAppData()
+  return <WorkforceDataProvider data={data}><Overview /></WorkforceDataProvider>
 }

@@ -57,6 +57,16 @@ test('what was typed always wins, including a typed zero', () => {
   assert.equal(hoursOn(zero, 'w-1', '2024-06-17'), 0)
 })
 
+test('a manual daily total overrides the hours stored on its shifts', () => {
+  const shiftHours = entry('w-1', '2024-06-17', 8)
+  const manualHours = { ...entry('w-1', '2024-06-17', 5.5), manual: true }
+  const i = input({ roster: [shift('w-1', '2024-06-17')], entries: [shiftHours, manualHours] })
+  assert.equal(hoursOn(i, 'w-1', '2024-06-17'), 5.5)
+
+  const noHours = { ...manualHours, hours: 0 }
+  assert.equal(hoursOn({ ...i, entries: [shiftHours, noHours] }, 'w-1', '2024-06-17'), 0)
+})
+
 test('a no-show is not paid the default', () => {
   const i = input({ roster: [shift('w-1', '2024-06-17', 'no_show')] })
   assert.equal(hoursOn(i, 'w-1', '2024-06-17'), 0)

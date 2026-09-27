@@ -1,11 +1,12 @@
-'use client'
-import dynamic from 'next/dynamic'
+import { MapWorkspace } from '@/components/map-workspace'
+import { WorkforceDataProvider } from '@/components/workforce-data-context'
+import { requireSession } from '@/lib/auth/guard'
+import { getWarehouseAppData } from '@/lib/db/workforce'
 
-/* Leaflet reaches for `window` the moment it is imported, so it must never be
-   pulled in during server rendering. */
-const MapView = dynamic(() => import('@/components/map-view').then(m => m.MapView), {
-  ssr: false,
-  loading: () => <div style={{ padding: 32, color: 'var(--muted-foreground)', fontSize: 13 }}>Loading map…</div>,
-})
+export const dynamic = 'force-dynamic'
 
-export default function Page() { return <MapView /> }
+export default async function Page() {
+  await requireSession()
+  const data = await getWarehouseAppData()
+  return <WorkforceDataProvider data={data}><MapWorkspace /></WorkforceDataProvider>
+}

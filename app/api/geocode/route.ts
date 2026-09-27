@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { getSession } from '@/lib/auth/guard'
 
 /**
  * Address search, proxied to Nominatim.
@@ -21,8 +22,11 @@ const CONTACT = process.env.GEOCODER_USER_AGENT
   ?? 'Mozilla/5.0 (compatible; IAWPlatform/1.0; +https://international-work.example)'
 
 export async function GET(request: Request) {
+  if (!await getSession()) return NextResponse.json({ error: 'Authentication required.' }, { status: 401 })
+
   const query = new URL(request.url).searchParams.get('q')?.trim()
   if (!query || query.length < 3) return NextResponse.json({ results: [] })
+  if (query.length > 160) return NextResponse.json({ error: 'Search query is too long.' }, { status: 400 })
 
   const url = new URL(`${NOMINATIM}/search`)
   url.searchParams.set('q', query)

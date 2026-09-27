@@ -2,7 +2,7 @@
 import Link from 'next/link'
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { Briefcase, Building2, Search, Users, X } from 'lucide-react'
-import { companies, vacancies, workers } from '@/lib/mock-data'
+import { useWorkforceData } from './workforce-data-context'
 
 /* Highlights the first hit of `query` inside `text` — same idea as a
    browser's own find-in-page, so it's obvious which word actually matched
@@ -30,6 +30,7 @@ const KIND_LABEL = { person: 'Person', company: 'Company', vacancy: 'Vacancy' } 
 const KIND_TONE = { person: 'blue', company: 'purple', vacancy: 'orange' } as const
 
 export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { companies, vacancies, workers } = useWorkforceData()
   const [query, setQuery] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
 

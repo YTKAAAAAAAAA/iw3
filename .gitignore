@@ -8,6 +8,7 @@ __v0_jsx-dev-runtime.ts
 
 # Environment variables
 .env*.local
+.env
 
 # Common ignores
 node_modules
@@ -17,7 +18,11 @@ node_modules
 tsconfig.tsbuildinfo
 .vercel
 .env*
+!.env.example
 
 # Local tooling artifacts — not part of the app
 .claude/
 .playwright-mcp/
+/data/postgres/
+*.sql.dump
+*.sql.gz

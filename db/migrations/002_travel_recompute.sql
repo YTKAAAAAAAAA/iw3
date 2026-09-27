@@ -11,26 +11,29 @@ create or replace view travel_recompute_queue as
 select
     w.id                       as worker_id,
     v.id                       as vacancy_id,
-    w.address                  as worker_address,
-    v.address                  as vacancy_address,
+    w.home_address             as worker_address,
+    v.worksite_address         as vacancy_address,
     t.id                       as stale_row_id,
     case
         when t.id is null                      then 'missing'
-        when t.worker_address  is distinct from w.address then 'worker_address_changed'
-        when t.vacancy_address is distinct from v.address then 'vacancy_address_changed'
+        when t.worker_address  is distinct from w.home_address then 'worker_address_changed'
+        when t.vacancy_address is distinct from v.worksite_address then 'vacancy_address_changed'
     end                        as reason
-from workers w
-cross join vacancies v
+from worker w
+cross join vacancy v
 left join travel_distances t
        on t.worker_id  = w.id
       and t.vacancy_id = v.id
       and t.valid_to is null
-where w.status = 'active'
+where w.is_active
+  and not w.is_fired
   and v.archived_at is null
+  and w.home_address is not null
+  and v.worksite_address is not null
   and (
         t.id is null
-     or t.worker_address  is distinct from w.address
-     or t.vacancy_address is distinct from v.address
+     or t.worker_address  is distinct from w.home_address
+     or t.vacancy_address is distinct from v.worksite_address
       );
 
 comment on view travel_recompute_queue is

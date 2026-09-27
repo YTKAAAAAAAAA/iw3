@@ -40,8 +40,8 @@ comment on table geocode_cache is
 create table if not exists travel_distances (
     id                bigserial primary key,
 
-    worker_id         bigint      not null references workers(id)   on delete cascade,
-    vacancy_id        bigint      not null references vacancies(id) on delete cascade,
+    worker_id         integer     not null references worker(id)   on delete cascade,
+    vacancy_id        integer     not null references vacancy(id)  on delete cascade,
 
     -- one way, by road
     km                numeric(6,1) not null check (km >= 0),

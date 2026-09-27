@@ -1,3 +1,13 @@
 import { Suspense } from 'react'
 import { PeopleView } from '@/components/workforce-views'
-export default function Page(){ return <Suspense><PeopleView /></Suspense> }
+import { WorkforceDataProvider } from '@/components/workforce-data-context'
+import { requireSession } from '@/lib/auth/guard'
+import { getWarehouseAppData } from '@/lib/db/workforce'
+
+export const dynamic = 'force-dynamic'
+
+export default async function Page() {
+  await requireSession()
+  const data = await getWarehouseAppData()
+  return <WorkforceDataProvider data={data}><Suspense><PeopleView /></Suspense></WorkforceDataProvider>
+}
