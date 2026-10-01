@@ -1,7 +1,6 @@
 services:
   postgres:
     image: postgres:17-alpine
-    user: postgres
     environment:
       POSTGRES_USER: postgres
       POSTGRES_DB: dispatcher
@@ -11,7 +10,7 @@ services:
       APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Set APP_DB_PASSWORD in .env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./docker/postgres-init.sh:/docker-entrypoint-initdb.d/10-create-app-role.sh:ro
+      - ./docker/postgres-init.sql:/docker-entrypoint-initdb.d/10-create-app-role.sql:ro
     networks:
       - database
     healthcheck:
@@ -26,8 +25,6 @@ services:
       - /var/run/postgresql
     security_opt:
       - no-new-privileges:true
-    cap_drop:
-      - ALL
 
   app:
     build:
