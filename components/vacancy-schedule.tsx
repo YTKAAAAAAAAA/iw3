@@ -10,6 +10,7 @@ import { travelFor } from '@/lib/travel'
 import { assessRequirements } from '@/lib/requirement-fit'
 import { addDays, formatDate, isoWeek, weekDates, weekdayLabel, weekdayOf, WEEKDAYS, TODAY } from '@/lib/types'
 import type { Demand, Offer, RosterEntry, StandingAssignment, Vacancy, Weekday, Worker } from '@/lib/types'
+import { WorkdayReport } from './workday-report'
 
 type View = 'day' | 'week' | 'month'
 type SavedSchedule = {
@@ -614,6 +615,7 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
                     </div>
                   )
                 })}
+                <WorkdayReport vacancyId={vacancy.id} date={date} />
               </Panel>
             )
           })}

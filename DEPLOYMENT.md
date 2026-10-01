@@ -1,45 +1,86 @@
-# Temporary preview deployment
+# Local Docker and deployment
 
-The repository is configured for Next.js on Vercel. The protected workforce,
-hours, time-off, and Warehouse vacancy screens read their records from
-PostgreSQL. These screens are currently read-only; do not use this preview for
-operational dispatch until schedule and absence changes are wired to persistent
-database writes.
+The app and PostgreSQL can run locally in Docker. PostgreSQL is on a private,
+internal Compose network with no published host port; only the app can connect.
+The app itself is published on `127.0.0.1:3000`, not on the local network.
 
-## Before deploying
+## Start locally
 
-1. Create a Vercel preview project and a managed PostgreSQL database with TLS
-   and a pooled connection string.
-2. Set these server-only variables in the Vercel **Preview** environment:
-   - `DATABASE_URL` — the pooled PostgreSQL URL.
-   - `SESSION_SECRET` — a cryptographically random secret of at least 32 bytes.
-   - `INITIAL_ADMIN_EMAIL` — the dispatcher account email (defaults to `dispatcher@local`).
-   - `INITIAL_ADMIN_PASSWORD` — a unique password of at least 12 characters.
-   - `GEOCODER_USER_AGENT` — a real application identifier and contact URL if
-     address search is enabled.
-3. Run `npm run db:migrate` with `DATABASE_URL` pointing at the preview
-   database. Migrations create/extend the schema; they do not seed, export, or
-   overwrite workers or shifts.
-4. Deploy the preview and verify `/login`, login/logout, and the protected
-   routes before sharing the URL.
-5. The first successful login creates the dispatcher account using
-   `INITIAL_ADMIN_EMAIL` and `INITIAL_ADMIN_PASSWORD`. If that account already
-   exists, the configured initial password can reset its password at sign-in.
-   After signing in, remove `INITIAL_ADMIN_PASSWORD` from Vercel. Keep
-   `INITIAL_ADMIN_EMAIL` unchanged so the app continues to look up the same
-   account.
+1. Start Docker Desktop and copy `.env.example` to `.env`.
+2. Set distinct, random values for `POSTGRES_SUPERUSER_PASSWORD`,
+   `APP_DB_PASSWORD`, and `SESSION_SECRET` (at least 32 bytes). Set
+   `INITIAL_ADMIN_PASSWORD` to a unique password of at least 12 characters.
+   Hex-encoded random values work well for the database passwords. For
+   example, in PowerShell generate a fresh value with:
 
-Use Preview-only secrets for a temporary deployment. Never put credentials in
-`NEXT_PUBLIC_*`, source files, command output, or Git.
+   ```powershell
+   $bytes = [byte[]]::new(32)
+   [Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+   -join ($bytes | ForEach-Object { $_.ToString('x2') })
+   ```
 
-## Real records
+   Generate a different value for every secret and paste them only into `.env`.
+   Keep `.env` out of Git.
+3. Start PostgreSQL and wait until it is healthy:
 
-The local PostgreSQL database contains real worker, absence, and Warehouse
-shift data. Do not copy it to a third-party host until that host and the
-personal-data processing have been approved. If approved, migrate the target
-schema first and transfer only the required business tables through an
-encrypted, access-controlled process. Exclude local account and migration
-metadata. Keep no unencrypted dump in the repository or deployment artifacts.
+   ```sh
+   docker compose up -d postgres
+   ```
 
-The UI reads worker, shift, absence, site, company, and requirement records from
-the configured database. Home addresses are not required and are not displayed.
+4. Build the app image and apply schema migrations:
+
+   ```sh
+   docker compose build app
+   docker compose run --rm app npm run db:migrate
+   ```
+
+5. Start the site at <http://localhost:3000>:
+
+   ```sh
+   docker compose up -d app
+   ```
+
+The named `postgres_data` volume persists the database across container
+restarts. The image creates a non-superuser `dispatcher` role for the app;
+only the PostgreSQL superuser initializes the database. `POSTGRES_HOST_AUTH_METHOD`
+and `POSTGRES_INITDB_ARGS` require SCRAM-SHA-256 password authentication.
+
+The database is not published to the host, and the database network is marked
+internal. The UI/API is the only service attached to both that network and the
+outbound app network. Docker MFA is not a PostgreSQL feature: database
+connections use the app's service credential, not an interactive login. MFA
+can be added to human sign-in separately if required.
+
+## VPS
+
+On a VPS, keep PostgreSQL on the same private Docker network with no `ports`
+mapping. Publish the app only through a TLS-terminating reverse proxy, and
+restrict host firewall ingress to the proxy's required ports. Use a unique
+`.env` on the server, restrict SSH and Docker-daemon access, encrypt backups,
+and test restoring them. A Docker volume is persistent storage, not a backup
+or at-rest encryption.
+
+Do not point a public Vercel deployment at a PostgreSQL container on a
+developer laptop. A Vercel deployment instead needs a separately approved,
+managed PostgreSQL database with TLS and a pooled connection string.
+
+## Credentials and real records
+
+Never put credentials in `NEXT_PUBLIC_*`, source files, command output, Git,
+or deployment artifacts. The first successful login creates the dispatcher
+account using `INITIAL_ADMIN_EMAIL` and `INITIAL_ADMIN_PASSWORD`. If the
+account already exists, the configured initial password can reset its
+password at sign-in. After signing in, remove `INITIAL_ADMIN_PASSWORD` from
+the deployment environment and keep `INITIAL_ADMIN_EMAIL` unchanged.
+
+The existing local PostgreSQL database contains real worker, absence, and
+shift data. The Compose database starts empty; its schema migrations do not
+seed or transfer records. Back up and transfer only required business tables
+through an encrypted, access-controlled process after confirming the VPS and
+data-processing arrangement are approved. Exclude local account and
+migration metadata. Never put an unencrypted dump in the repository or image.
+
+Workday photos are stored as private PostgreSQL `BYTEA` data. Listing,
+uploading, viewing, and deleting them require an authenticated session; only
+JPEG, PNG, and WebP content is accepted, up to 10 MiB per photo. They are not
+included in the share/screenshot view.

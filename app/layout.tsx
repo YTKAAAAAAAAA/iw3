@@ -3,8 +3,8 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'International@Work · Workforce operations',
-  description: 'A clear daily workspace for people, vacancies, hours and office tasks.',
+  title: 'International@Work · Dispatcher',
+  description: 'Company-wide scheduling and workforce operations across International@Work vacancies.',
   generator: 'v0.app',
   /* One SVG for every size. The PNGs that used to sit here came with the v0
      export and carried v0's own logo. */

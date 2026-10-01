@@ -610,6 +610,25 @@ svg { width: 16px; height: 16px; flex: none; }
 .sched-day-head strong { font-size: 13px; margin-right: 8px; }
 .sched-day-head span { color: var(--muted-foreground); font-size: 11px; }
 .sched-empty { margin: 0; padding: 12px 16px; color: var(--muted-foreground); font-size: 12px; }
+.workday-report { border-top: 1px solid var(--border); padding: 10px 16px; }
+.workday-report-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.workday-report-head > div { display: flex; flex-direction: column; gap: 2px; }
+.workday-report-head strong { font-size: 12px; }
+.workday-report-head span, .workday-report-body > p { color: var(--muted-foreground); font-size: 11px; }
+.workday-report-body { padding-top: 8px; }
+.workday-report-body > p { margin: 0 0 8px; }
+.workday-photo-input { display: block; max-width: 100%; font-size: 12px; }
+.workday-report-status { display: flex; align-items: center; gap: 6px; }
+.workday-report-error { color: var(--danger, var(--status-failed)); }
+.workday-photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 180px)); gap: 10px; margin-top: 10px; }
+.workday-photo { min-width: 0; margin: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
+.workday-photo a { display: block; }
+.workday-photo img { display: block; width: 100%; height: 120px; object-fit: cover; }
+.workday-photo figcaption { display: flex; align-items: center; justify-content: space-between; padding: 2px 8px; color: var(--muted-foreground); font-size: 10px; }
+.workday-photo figcaption .icon-button { width: 28px; height: 28px; }
+.workday-photo figcaption .icon-button svg { width: 14px; height: 14px; }
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .sched-slot { padding: 12px 16px; border-bottom: 1px solid var(--border); }
 .sched-slot:last-child { border-bottom: 0; }
 .sched-slot.open { background: var(--muted); }

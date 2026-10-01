@@ -37,6 +37,7 @@ stored in this repository.
 | `vacancy_demand` | Dated headcount/time requirements. |
 | `shift` | Assigned or uncovered shift occurrence, hours, planned/actual times, confirmation, attendance and replacement link. |
 | `vacancy_schedule_state` | Per-vacancy schedule revision, standing assignments, and candidate offer/decline decisions. |
+| `vacancy_workday_photo` | Private JPEG/PNG/WebP photos attached to a vacancy and work date; authenticated API routes serve the image bytes stored in PostgreSQL. |
 | `shift_offer` | Offer/response history per candidate and shift. |
 | `manual_hours` | Per-worker, vacancy, and date overrides for manually entered time; imported shift hours remain unchanged. |
 | `worker_course_day`, `worker_qualification`, `worker_company_access` | Normalized recurring availability and candidate-fit data. |
@@ -72,6 +73,9 @@ are not required for planning and are not populated by this migration.
 
 ## Deployment and personal data
 
+For local use, run PostgreSQL using the root `compose.yaml`; its container is
+reachable only from the app over an internal Docker network, with no published
+database port. See [DEPLOYMENT.md](../DEPLOYMENT.md) for setup and VPS notes.
 Use a managed PostgreSQL service with TLS and connection pooling for Vercel.
 The live local database contains real worker data. Do not put a SQL dump, the
 local PostgreSQL data directory, connection strings, or worker CSV exports in
@@ -89,3 +93,7 @@ offer/decline decisions are saved with revision checks; shift history, offers,
 attendance, and actual times are protected from destructive edits. Worker
 identity and contact fields remain read-only. The app
 intentionally does not show worker home addresses.
+
+Workday photos are attached to a vacancy and date, stored as PostgreSQL binary
+data, and exposed only through authenticated API routes. Share view does not
+include the photo report.
