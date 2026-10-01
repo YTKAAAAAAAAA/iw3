@@ -1,61 +1,53 @@
 'use server'
 
-import { timingSafeEqual } from 'node:crypto'
+import { createHmac } from 'node:crypto'
 import { cookies, headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import bcrypt from 'bcryptjs'
 import { withDb } from '@/lib/db'
-import { createSessionToken, hasSessionSecret, rateLimitIdentity, SESSION_COOKIE, verifySessionToken } from './session'
+import { authenticatePassword } from './password'
+import { createSessionToken, SESSION_COOKIE, verifySessionToken } from './session'
+import { getSession } from './guard'
 
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7
-const MAX_ATTEMPTS = 8
-const ADMIN_EMAIL = process.env.INITIAL_ADMIN_EMAIL?.trim() || 'dispatcher@local'
 
 export type LoginState = { error?: string }
 type AppUser = { id: number; password_hash: string; session_version: number }
 
-function secretsMatch(input: string, expected: string): boolean {
-  const inputBytes = Buffer.from(input)
-  const expectedBytes = Buffer.from(expected)
-  return inputBytes.length === expectedBytes.length && timingSafeEqual(inputBytes, expectedBytes)
+function backendUrl(path: string): string {
+  const base = process.env.APP_BACKEND_URL
+  if (!base) throw new Error('APP_BACKEND_URL must be configured to use the remote backend.')
+  return `${base.replace(/\/+$/, '')}${path}`
 }
 
-async function isLocked(key: string): Promise<boolean> {
-  return withDb(async db => {
-    const { rows } = await db.query<{ attempts: number }>(
-      `SELECT attempts FROM auth_login_attempt
-       WHERE key_hash = $1 AND window_started_at > now() - interval '10 minutes'`,
-      [key],
-    )
-    return (rows[0]?.attempts ?? 0) >= MAX_ATTEMPTS
+async function remoteLogin(password: string, identity: string) {
+  const proxySecret = process.env.BACKEND_PROXY_SECRET
+  if (!proxySecret) throw new Error('BACKEND_PROXY_SECRET must be configured for remote sign-in.')
+  const identitySignature = createHmac('sha256', proxySecret).update(identity).digest('hex')
+  const response = await fetch(backendUrl('/api/auth/login'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Backend-Secret': proxySecret,
+      'X-Login-Identity': identity,
+      'X-Login-Signature': identitySignature,
+    },
+    body: JSON.stringify({ password }),
+    cache: 'no-store',
   })
-}
-
-async function recordFailure(key: string): Promise<void> {
-  await withDb(async db => {
-    await db.query(
-      `INSERT INTO auth_login_attempt (key_hash, attempts, window_started_at)
-       VALUES ($1, 1, now())
-       ON CONFLICT (key_hash) DO UPDATE SET
-         attempts = CASE
-           WHEN auth_login_attempt.window_started_at <= now() - interval '10 minutes' THEN 1
-           ELSE auth_login_attempt.attempts + 1
-         END,
-         window_started_at = CASE
-           WHEN auth_login_attempt.window_started_at <= now() - interval '10 minutes' THEN now()
-           ELSE auth_login_attempt.window_started_at
-         END,
-         updated_at = now()`,
-      [key],
-    )
-    await db.query("DELETE FROM auth_login_attempt WHERE updated_at < now() - interval '30 days'")
-  })
-}
-
-async function clearAttempts(key: string): Promise<void> {
-  await withDb(async db => {
-    await db.query('DELETE FROM auth_login_attempt WHERE key_hash = $1', [key])
-  })
+  const result: unknown = await response.json()
+  if (!response.ok) {
+    const error = typeof result === 'object' && result !== null && 'error' in result
+      && typeof result.error === 'string' ? result.error : 'Could not sign in.'
+    return { error }
+  }
+  if (typeof result !== 'object' || result === null || !('userId' in result)
+    || typeof result.userId !== 'number' || !Number.isSafeInteger(result.userId)
+    || !('sessionVersion' in result) || typeof result.sessionVersion !== 'number'
+    || !Number.isSafeInteger(result.sessionVersion)) {
+    throw new Error('The backend returned an invalid sign-in response.')
+  }
+  return { userId: result.userId, sessionVersion: result.sessionVersion }
 }
 
 export async function login(_previous: LoginState, formData: FormData): Promise<LoginState> {
@@ -63,70 +55,15 @@ export async function login(_previous: LoginState, formData: FormData): Promise<
   const password = typeof value === 'string' ? value : ''
   if (!password) return { error: 'Enter the password.' }
   if (password.length > 1024) return { error: 'Password is too long.' }
-  if (!hasSessionSecret()) return { error: 'Sign-in is not configured on this deployment.' }
-
   const requestHeaders = await headers()
-  const attemptKey = rateLimitIdentity(requestHeaders.get('x-real-ip')?.trim() || 'unknown')
-  if (await isLocked(attemptKey)) return { error: 'Too many attempts. Wait ten minutes and try again.' }
+  const identity = requestHeaders.get('x-forwarded-for')?.split(',')[0]?.trim()
+    || requestHeaders.get('x-real-ip')?.trim() || 'unknown'
+  const result = process.env.APP_BACKEND_URL
+    ? await remoteLogin(password, identity)
+    : await authenticatePassword(password, identity)
+  if ('error' in result) return result
 
-  let user = await withDb(async db => {
-    const { rows } = await db.query<AppUser>(
-      'SELECT id, password_hash, session_version FROM app_user WHERE email = $1 LIMIT 1',
-      [ADMIN_EMAIL],
-    )
-    return rows[0]
-  })
-
-  if (!user) {
-    const bootstrapPassword = process.env.INITIAL_ADMIN_PASSWORD
-    if (!bootstrapPassword || bootstrapPassword.length < 12) {
-      return { error: 'The initial administrator password has not been configured.' }
-    }
-
-    if (!secretsMatch(password, bootstrapPassword)) {
-      await recordFailure(attemptKey)
-      return { error: 'Wrong password.' }
-    }
-
-    const hash = await bcrypt.hash(password, 12)
-    user = await withDb(async db => {
-      await db.query(
-        `INSERT INTO app_user (email, password_hash) VALUES ($1, $2)
-         ON CONFLICT DO NOTHING`,
-        [ADMIN_EMAIL, hash],
-      )
-      const result = await db.query<AppUser>(
-        'SELECT id, password_hash, session_version FROM app_user WHERE email = $1 LIMIT 1',
-        [ADMIN_EMAIL],
-      )
-      return result.rows[0]
-    })
-  } else if (!(await bcrypt.compare(password, user.password_hash))) {
-    const bootstrapPassword = process.env.INITIAL_ADMIN_PASSWORD
-    if (!bootstrapPassword || bootstrapPassword.length < 12 || !secretsMatch(password, bootstrapPassword)) {
-      await recordFailure(attemptKey)
-      return { error: 'Wrong password.' }
-    }
-
-    const hash = await bcrypt.hash(password, 12)
-    user = await withDb(async db => {
-      const { rows } = await db.query<AppUser>(`
-        UPDATE app_user
-        SET password_hash = $1, session_version = session_version + 1
-        WHERE id = $2
-        RETURNING id, password_hash, session_version
-      `, [hash, user.id])
-      return rows[0]
-    })
-  }
-
-  if (!user || !(await bcrypt.compare(password, user.password_hash))) {
-    await recordFailure(attemptKey)
-    return { error: 'Wrong password.' }
-  }
-
-  await clearAttempts(attemptKey)
-  const token = await createSessionToken(user.id, user.session_version)
+  const token = await createSessionToken(result.userId, result.sessionVersion)
   const store = await cookies()
   store.set(SESSION_COOKIE, token, {
     httpOnly: true,
@@ -145,6 +82,35 @@ export async function logout(): Promise<void> {
 }
 
 export async function changePassword(_previous: LoginState, formData: FormData): Promise<LoginState> {
+  if (process.env.APP_BACKEND_URL) {
+    const sessionToken = (await cookies()).get(SESSION_COOKIE)?.value
+    const session = await getSession()
+    if (!session || !sessionToken) return { error: 'Session expired — sign in again.' }
+
+    const current = formData.get('current')
+    const next = formData.get('next')
+    const confirmation = formData.get('confirmation')
+    if (typeof current !== 'string' || !current || typeof next !== 'string') return { error: 'Enter both passwords.' }
+    if (next.length < 12) return { error: 'New password must be at least 12 characters.' }
+    if (next.length > 1024) return { error: 'New password is too long.' }
+    if (confirmation !== next) return { error: 'The new passwords do not match.' }
+
+    const response = await fetch(backendUrl('/api/auth/password'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: `${SESSION_COOKIE}=${sessionToken}` },
+      body: JSON.stringify({ current, next }),
+      cache: 'no-store',
+    })
+    const result: unknown = await response.json()
+    if (!response.ok) {
+      const error = typeof result === 'object' && result !== null && 'error' in result
+        && typeof result.error === 'string' ? result.error : 'Could not change the password.'
+      return { error }
+    }
+    ;(await cookies()).delete(SESSION_COOKIE)
+    redirect('/login?passwordChanged=1')
+  }
+
   const sessionToken = (await cookies()).get(SESSION_COOKIE)?.value
   const session = sessionToken ? await verifySessionToken(sessionToken) : null
   if (!session) return { error: 'Session expired — sign in again.' }

@@ -4,6 +4,51 @@ The app and PostgreSQL can run locally in Docker. PostgreSQL is on a private,
 internal Compose network with no published host port; only the app can connect.
 The app itself is published on `127.0.0.1:3000`, not on the local network.
 
+## Vercel frontend and VPS backend
+
+The Vercel deployment serves the Next.js interface. Its `/api/*` requests and
+server-rendered workforce data go to the API on the VPS over HTTPS. The
+PostgreSQL container remains on a private Docker network and is never exposed
+to Vercel or the public internet.
+
+The VPS uses a separate Compose override to bind the app to
+`127.0.0.1:3001`; it does not publish a database port:
+
+```sh
+docker compose -f compose.yaml -f compose.server.yaml up -d postgres
+docker compose -f compose.yaml -f compose.server.yaml build app
+docker compose -f compose.yaml -f compose.server.yaml run --rm app npm run db:migrate
+docker compose -f compose.yaml -f compose.server.yaml up -d app
+```
+
+Add this route inside the existing `api.iatw-backend.site` Caddy site block,
+before its existing `reverse_proxy` directive. Validate the Caddyfile before
+reloading Caddy. The path is reserved for this app; the existing backend's
+routes continue to use their existing upstream:
+
+```caddy
+handle_path /dispatcher-api/api/* {
+    reverse_proxy 127.0.0.1:3001
+}
+```
+
+Create a new Vercel project from the repository's `master` branch; do not
+replace the existing Vercel projects. Set these Vercel **Production** and
+**Preview** environment variables:
+
+- `APP_BACKEND_URL=https://api.iatw-backend.site/dispatcher-api`
+- `BACKEND_PROXY_SECRET` — the same random secret on Vercel and the VPS; it
+  restricts password sign-in requests to the Vercel server action.
+- `SESSION_SECRET` — exactly the same random secret configured on the VPS.
+- `INITIAL_ADMIN_EMAIL` — the same administrator email as the VPS.
+
+On the VPS, set `BACKEND_PROXY_SECRET`, `SESSION_SECRET`, `INITIAL_ADMIN_EMAIL`, and
+`INITIAL_ADMIN_PASSWORD` in its private `.env`, along with separate
+`POSTGRES_SUPERUSER_PASSWORD` and `APP_DB_PASSWORD` secrets. The Vercel
+project never receives database credentials. Browser API calls use same-origin
+Vercel rewrites; server-rendered pages make authenticated HTTPS requests to the
+backend. Do not set `DATABASE_URL` on Vercel.
+
 ## Start locally
 
 1. Start Docker Desktop and copy `.env.example` to `.env`.
@@ -60,9 +105,9 @@ restrict host firewall ingress to the proxy's required ports. Use a unique
 and test restoring them. A Docker volume is persistent storage, not a backup
 or at-rest encryption.
 
-Do not point a public Vercel deployment at a PostgreSQL container on a
-developer laptop. A Vercel deployment instead needs a separately approved,
-managed PostgreSQL database with TLS and a pooled connection string.
+Do not expose PostgreSQL directly to Vercel or the public internet. For this
+deployment, Vercel talks only to the VPS API over HTTPS; PostgreSQL is reachable
+only by the backend app over its private Docker network.
 
 ## Credentials and real records
 

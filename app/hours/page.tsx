@@ -1,12 +1,12 @@
 import { HoursView } from '@/components/workforce-views'
 import { WorkforceDataProvider } from '@/components/workforce-data-context'
 import { requireSession } from '@/lib/auth/guard'
-import { getWarehouseAppData } from '@/lib/db/workforce'
+import { getPageWorkforceData } from '@/lib/db/page-data'
 
 export const dynamic = 'force-dynamic'
 
 export default async function Page() {
   await requireSession()
-  const data = await getWarehouseAppData()
+  const data = await getPageWorkforceData()
   return <WorkforceDataProvider data={data}><HoursView /></WorkforceDataProvider>
 }
