@@ -27,7 +27,7 @@ reloading Caddy. The path is reserved for this app; the existing backend's
 routes continue to use their existing upstream:
 
 ```caddy
-handle_path /dispatcher-api/api/* {
+handle_path /dispatcher-api/* {
     reverse_proxy 127.0.0.1:3001
 }
 ```
