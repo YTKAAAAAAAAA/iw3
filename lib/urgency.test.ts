@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { sortByUrgency, urgencyNote, vacancyUrgency } from './derive.ts'
-import type { RosterEntry, StandingAssignment, Vacancy } from './types.ts'
+import { sortByUrgency, urgencyNote, vacancyStatus, vacancyUrgency } from './derive.ts'
+import type { Demand, RosterEntry, StandingAssignment, Vacancy } from './types.ts'
 
 const TODAY = '2024-06-18'
 
@@ -21,29 +21,52 @@ const standing = (vacancyId: string, to: string | null): StandingAssignment => (
   id: `sa-${vacancyId}`, vacancyId, workerId: 'w-1', placeId: null, section: null,
   weekdays: ['mon'], start: null, end: null, from: '2024-01-01', to, note: null,
 })
+const demand = (vacancyId: string, date = TODAY, headcount = 1): Demand => ({
+  id: `d-${vacancyId}-${date}`, vacancyId, date, placeId: null, section: null,
+  headcount, start: null, end: null, note: null,
+})
 
 test('started and empty is late; starting within three days is soon', () => {
-  assert.equal(vacancyUrgency(vacancy('a', '2024-06-10'), [], [], TODAY), 'late')
-  assert.equal(vacancyUrgency(vacancy('a', TODAY), [], [], TODAY), 'soon')
-  assert.equal(vacancyUrgency(vacancy('a', '2024-06-21'), [], [], TODAY), 'soon')
+  assert.equal(vacancyUrgency(vacancy('a', '2024-06-10'), [], [], TODAY, [demand('a')]), 'late')
+  assert.equal(vacancyUrgency(vacancy('a', TODAY), [], [], TODAY, [demand('a')]), 'soon')
+  assert.equal(vacancyUrgency(vacancy('a', '2024-06-21'), [], [], TODAY, [demand('a', '2024-06-21')]), 'soon')
 })
 
 test('the fourth day out is not urgent yet', () => {
-  assert.equal(vacancyUrgency(vacancy('a', '2024-06-22'), [], [], TODAY), 'none')
+  assert.equal(vacancyUrgency(vacancy('a', '2024-06-22'), [], [], TODAY, [demand('a', '2024-06-22')]), 'none')
 })
 
-test('somebody on it is the whole point — a staffed vacancy is never coloured', () => {
+test('no dated demand or uncovered shift means the started vacancy is not unstaffed', () => {
+  assert.equal(vacancyUrgency(vacancy('a', '2024-06-17'), [], [], TODAY), 'none')
+})
+
+test('an uncovered shift or unmet dated headcount is unstaffed; filled demand is not', () => {
   const v = vacancy('a', '2024-06-10')
-  assert.equal(vacancyUrgency(v, [], [shift('a', '2024-06-19', 'w-1')], TODAY), 'none')
+  assert.equal(vacancyUrgency(v, [], [shift('a', TODAY, 'w-1')], TODAY, [demand('a')]), 'none')
   assert.equal(vacancyUrgency(v, [standing('a', null)], [], TODAY), 'none')
-  /* An empty shift is not staffing: the slot exists and nobody is in it. */
-  assert.equal(vacancyUrgency(v, [], [shift('a', '2024-06-19', null)], TODAY), 'late')
-  /* Neither is an arrangement that has already ended. */
-  assert.equal(vacancyUrgency(v, [standing('a', '2024-06-01')], [], TODAY), 'late')
+  assert.equal(vacancyUrgency(v, [ { ...standing('a', null), weekdays: ['tue'] } ], [], TODAY, [demand('a')]), 'none')
+  assert.equal(vacancyUrgency(v, [], [shift('a', TODAY, null)], TODAY), 'late')
+  assert.equal(vacancyUrgency(v, [], [], TODAY, [demand('a', TODAY, 2)]), 'late')
+  assert.equal(vacancyUrgency(v, [], [shift('a', TODAY, 'w-1')], TODAY, [demand('a', TODAY, 2)]), 'late')
+  assert.equal(vacancyUrgency(v, [standing('a', '2024-06-01')], [], TODAY), 'none')
 })
 
 test('an ended vacancy is history, not an emergency', () => {
   assert.equal(vacancyUrgency(vacancy('a', '2024-01-01', '2024-06-01'), [], [], TODAY), 'none')
+})
+
+test('manual archiving preserves vacancy dates and can be reversed', () => {
+  const active = vacancy('a', TODAY, '2024-06-20')
+  assert.equal(vacancyStatus(active, [], [], TODAY), 'open')
+  assert.equal(vacancyStatus({ ...active, archivedAt: '2024-06-18T12:00:00Z' }, [], [], TODAY), 'archived')
+  assert.equal(vacancyUrgency({ ...active, archivedAt: '2024-06-18T12:00:00Z' }, [], [], TODAY, [demand('a')]), 'none')
+  assert.equal(vacancyStatus({ ...active, archivedAt: null }, [], [], TODAY), 'open')
+})
+
+test('a vacancy with an end date stays active for that entire date', () => {
+  const active = vacancy('a', '2024-06-10', '2024-06-18')
+  assert.equal(vacancyStatus(active, [], [], TODAY), 'open')
+  assert.equal(vacancyStatus(active, [], [], '2024-06-19'), 'archived')
 })
 
 test('late first, then soon, and inside each group the nearest date', () => {
@@ -54,7 +77,13 @@ test('late first, then soon, and inside each group the nearest date', () => {
     vacancy('soon-today', TODAY),
     vacancy('late-recent', '2024-06-17'),
   ]
-  assert.deepEqual(sortByUrgency(list, [], [], TODAY).map(v => v.id),
+  const demandRows = [
+    demand('soon-later', '2024-06-21'),
+    demand('late-old'),
+    demand('soon-today'),
+    demand('late-recent'),
+  ]
+  assert.deepEqual(sortByUrgency(list, [], [], TODAY, demandRows).map(v => v.id),
     ['late-old', 'late-recent', 'soon-today', 'soon-later', 'quiet'])
 })
 

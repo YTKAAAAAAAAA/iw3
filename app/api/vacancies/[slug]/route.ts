@@ -53,6 +53,26 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ sl
   }
   if (!isRecord(body)) return NextResponse.json({ error: 'Invalid vacancy details.' }, { status: 400 })
 
+  if (Object.keys(body).length === 1 && typeof body.archived === 'boolean') {
+    try {
+      const archived = body.archived
+      const { rows } = await withDb(db => db.query<{ slug: string; archived_at: string | null }>(`
+        UPDATE vacancy
+        SET is_active = NOT $2,
+            archived_at = CASE WHEN $2 THEN COALESCE(archived_at, now()) ELSE NULL END,
+            updated_at = now()
+        WHERE slug = $1
+        RETURNING slug, archived_at::text AS archived_at
+      `, [slug, archived]))
+      const row = rows[0]
+      if (!row) return NextResponse.json({ error: 'Vacancy not found.' }, { status: 404 })
+      return NextResponse.json({ slug: row.slug, archivedAt: row.archived_at })
+    } catch (error) {
+      console.error('Failed to update vacancy archive status.', error)
+      return NextResponse.json({ error: 'Could not update vacancy archive status.' }, { status: 500 })
+    }
+  }
+
   if (Object.keys(body).length === 1 && typeof body.requiresAvailableList === 'boolean') {
     const { rows } = await withDb(db => db.query<{ slug: string }>(`
       UPDATE vacancy

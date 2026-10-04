@@ -1,5 +1,6 @@
 import { requireSession } from '@/lib/auth/guard'
 import { PasswordForm } from './password-form'
+import { PasswordCopy } from './password-copy'
 
 export const dynamic = 'force-dynamic'
 
@@ -8,8 +9,7 @@ export default async function PasswordSettingsPage() {
   return (
     <main className="auth-page">
       <section className="auth-card" aria-labelledby="password-title">
-        <h1 id="password-title">Change password</h1>
-        <p>Choose a new password with at least 12 characters.</p>
+        <PasswordCopy />
         <PasswordForm />
       </section>
     </main>

@@ -16,20 +16,44 @@ npm run db:migrate
 The migration runner takes a PostgreSQL advisory lock and records applied
 migrations in `schema_migrations`. It does not seed or overwrite worker data.
 
-## Imported Warehouse snapshot
+## Warehouse snapshot synchronization
 
-The supplied CSV export has been loaded into the local database: 33 workers,
-52 absence periods, and 537 Warehouse shifts. Source IDs, dates, hours, worker
-links, sites, notes, and absence reasons are retained. The weekly course-day
-index is rebuilt from each worker's `fixed_course_days`; worker home addresses
-remain empty. The CSV files contain personal data and are intentionally not
-stored in this repository.
+The current Warehouse snapshot is stored in Supabase tables `workers`,
+`schedule`, and `vacations`. **Sync sources** reads a consistent, read-only
+snapshot and synchronizes worker profiles by stable worker IDs, and shifts and
+absences by stable record IDs, in one local transaction. Source shifts and
+absences removed from Supabase are removed locally; shift offers attached to a
+removed shift are removed as well. Schedule fields on linked shifts are updated
+from Supabase even if they were changed locally. Local-only shifts and absences
+are not treated as source records and remain untouched. Flexpedia owns the
+name of every worker linked to it; Supabase only names workers that are not
+linked to Flexpedia yet. Exact-name matching is
+used only to link older local worker rows that do not yet have a Supabase ID;
+ambiguous matches stop the entire sync.
+
+Disabling Supabase sync only stops future snapshots. The separate Flexpedia
+employee sync reads the complete paginated employee list, matches by stable ID
+or a unique exact name, and creates unmatched workers without company access.
+Profile fields from Flexpedia are authoritative: incoming values, including
+nulls, replace the stored Flexpedia profile. Employment status is managed
+manually in the dispatcher; Flexpedia sync never dismisses or reactivates
+workers, regardless of whether they appear in its employee snapshot. Manual
+dismissal and restoration preserve the local worker row, shifts, absences,
+hours, and work history. The connection test remains read-only. The documented
+EmployeeModel contains `id`, initials,
+first/insertion/last name, gender, birthdate, street, street number/addition,
+postcode, city, phone, phone-country ISO code, mobile, email, residence-country
+ISO code, and nationality ISO code. Only initials, first name, last name, and
+email are required by the OpenAPI schema; most profile fields are nullable or
+optional. The isolated merge fixture exercises all 18 schema fields against
+one uniquely matched local worker and one fake new worker, but does not write
+either record. Flexpedia's documented endpoint does not provide schedules.
 
 ## Main tables
 
 | Table | Purpose |
 | --- | --- |
-| `worker` | Stable local worker identity, active/fired state, language/notes and weekly course-day source data. `flexpedia_id` is nullable and unique; a future sync maps API records onto the existing worker row and never replaces the local key, so its historical shifts remain linked. Home addresses are optional and are not imported. |
+| `worker` | Stable local worker identity, manually managed active/fired state and dismissal date, language/notes and weekly course-day source data. `flexpedia_id` is nullable and unique; Flexpedia sync maps API records onto the existing worker row and never replaces the local key, so its historical shifts remain linked. Flexpedia address fields are stored for the profile but are not shown in the workforce interface. |
 | `absence` | Date ranges when a worker is unavailable. |
 | `company`, `site` | Clients and physical locations, including Warehouse halls. |
 | `vacancy`, `vacancy_site` | The job/order and the sites where it can be staffed. |
@@ -68,8 +92,9 @@ candidate responses as vacancy-scoped JSON and every save is recorded in
 `vacancy_change`.
 
 The existing `shift.hours` values are retained as entered; missing scheduled
-times and attendance are left unknown rather than inferred. Workers' addresses
-are not required for planning and are not populated by this migration.
+times and attendance are left unknown rather than inferred. Schema migrations
+do not populate worker addresses; the Flexpedia employee sync updates the
+stored address from its source.
 
 ## Deployment and personal data
 

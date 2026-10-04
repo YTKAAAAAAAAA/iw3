@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
 import { Crosshair, MapPin, Search } from 'lucide-react'
+import { useLanguage } from '@/lib/i18n'
 
 export type PickedAddress = { label: string; lat: number; lon: number }
 type Result = PickedAddress & { detail: string }
@@ -24,6 +25,7 @@ export function AddressPicker({ value, onChange }: {
   value: PickedAddress | null
   onChange: (picked: PickedAddress | null) => void
 }) {
+  const { t } = useLanguage()
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<Result[]>([])
   const [state, setState] = useState<'idle' | 'searching' | 'empty' | 'error'>('idle')
@@ -36,7 +38,7 @@ export function AddressPicker({ value, onChange }: {
        with a space — the two forms every maps app puts on the clipboard. */
     const pair = text.match(/^\s*(-?\d{1,3}\.\d+)\s*[,\s]\s*(-?\d{1,3}\.\d+)\s*$/)
     if (pair) {
-      setResults([{ label: `${pair[1]}, ${pair[2]}`, detail: 'Coordinates entered directly', lat: Number(pair[1]), lon: Number(pair[2]) }])
+      setResults([{ label: `${pair[1]}, ${pair[2]}`, detail: t('Coordinates entered directly'), lat: Number(pair[1]), lon: Number(pair[2]) }])
       setState('idle')
       return
     }
@@ -60,12 +62,12 @@ export function AddressPicker({ value, onChange }: {
       <div className="address-search">
         <Search />
         <input value={query} onChange={e => setQuery(e.target.value)}
-          placeholder="Search an address, or paste 52.3138, 4.9377" aria-label="Search the site address" />
+          placeholder={t('Search an address, or paste 52.3138, 4.9377')} aria-label={t('Search the site address')} />
       </div>
 
-      {state === 'searching' && <p className="address-note">Searching…</p>}
-      {state === 'empty' && <p className="address-note">Nothing found. Try the postcode and house number — in the Netherlands that pair is unique.</p>}
-      {state === 'error' && <p className="address-note warn">The address service did not answer. You can paste coordinates instead.</p>}
+      {state === 'searching' && <p className="address-note">{t('Searching…')}</p>}
+      {state === 'empty' && <p className="address-note">{t('Nothing found. Try the postcode and house number — in the Netherlands that pair is unique.')}</p>}
+      {state === 'error' && <p className="address-note warn">{t('The address service did not answer. You can paste coordinates instead.')}</p>}
 
       {results.length > 0 && (
         <ul className="address-results">
@@ -86,11 +88,11 @@ export function AddressPicker({ value, onChange }: {
             <strong>{value.label}</strong>
             <small>{value.lat.toFixed(5)}, {value.lon.toFixed(5)}</small>
           </div>
-          <button type="button" className="button button-secondary button-small" onClick={() => onChange(null)}>Change</button>
+          <button type="button" className="button button-secondary button-small" onClick={() => onChange(null)}>{t('Change')}</button>
         </div>
       )}
       {value && <PinMap value={value} onMove={(lat, lon) => onChange({ ...value, lat, lon })} />}
-      {!value && <p className="address-note">Nothing is saved until an address is picked — an address with no coordinates cannot be used for distances.</p>}
+      {!value && <p className="address-note">{t('Nothing is saved until an address is picked — an address with no coordinates cannot be used for distances.')}</p>}
     </div>
   )
 }

@@ -23,7 +23,6 @@ CREATE TABLE IF NOT EXISTS worker (
   rating TEXT NOT NULL DEFAULT 'new' CHECK (rating IN ('green', 'yellow', 'new')),
   cc TEXT,
   notes TEXT,
-  whatsapp_phone TEXT,
   fixed_course_days TEXT,
   recommend BOOLEAN NOT NULL DEFAULT TRUE,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,

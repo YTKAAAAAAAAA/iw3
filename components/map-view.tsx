@@ -9,6 +9,7 @@ import { useWorkforceData } from './workforce-data-context'
 import { dayStatus } from '@/lib/derive'
 import { travelFor, withinDrive, TRAVEL_COMPUTED_AT, TRAVEL_PROFILE } from '@/lib/travel'
 import { formatDate, TODAY } from '@/lib/types'
+import { useLanguage } from '@/lib/i18n'
 
 /* Leaflet writes colours straight into SVG attributes, so it cannot take a CSS
    variable — it has to be handed a resolved string. Reading the token at draw
@@ -31,6 +32,7 @@ type Filter = 'all' | 'free' | 'working'
  *  opening the vacancy you were already looking at. */
 export function MapPanel({ vacancyId }: { vacancyId?: string }) {
   const { leaves, roster, vacancies, workers } = useWorkforceData()
+  const { t } = useLanguage()
   const sites = vacancies.filter(v => v.lat !== null && v.lon !== null)
   const [chosen, setChosen] = useState(vacancyId ?? sites[0]?.id ?? '')
   const siteId = vacancyId ?? chosen
@@ -132,7 +134,7 @@ export function MapPanel({ vacancyId }: { vacancyId?: string }) {
         fillOpacity: isInside ? 1 : 0.35, opacity: isInside ? 1 : 0.4,
       })
       marker.bindTooltip(
-        `<strong>${worker.fullName}</strong><br>${travel.km} km · ${travel.minutes} min by car<br>${STATE_LABEL[state]}`,
+        `<strong>${worker.fullName}</strong><br>${travel.km} km · ${travel.minutes} min ${t('by car')}<br>${t(STATE_LABEL[state])}`,
         { direction: 'top' })
       marker.on('click', () => setSelected(workerId))
       marker.addTo(layer)
@@ -140,7 +142,7 @@ export function MapPanel({ vacancyId }: { vacancyId?: string }) {
       if (el) {
         el.setAttribute('role', 'button')
         el.setAttribute('aria-label',
-          `${worker.fullName}, ${travel.km} km, ${travel.minutes} min by car, ${STATE_LABEL[state]}`)
+          `${worker.fullName}, ${travel.km} km, ${travel.minutes} min ${t('by car')}, ${t(STATE_LABEL[state])}`)
       }
       markersRef.current.set(workerId, marker)
     }
@@ -156,7 +158,7 @@ export function MapPanel({ vacancyId }: { vacancyId?: string }) {
       ringRef.current.setLatLng([site.lat, site.lon]).setRadius(radius * 1000)
     }
 
-  }, [site, inside, outside, radius, workerById])
+  }, [site, inside, outside, radius, workerById, t])
 
   /* Framing lives on its own and keys off PRIMITIVES. Array identity cannot
      reach it, so no amount of re-rendering can steal the zoom the user chose:
@@ -233,24 +235,24 @@ export function MapPanel({ vacancyId }: { vacancyId?: string }) {
     <>
       <div className="map-toolbar">
         {!vacancyId && (
-          <select value={siteId} onChange={e => { setChosen(e.target.value); setSelected(null) }} aria-label="Vacancy">
+          <select value={siteId} onChange={e => { setChosen(e.target.value); setSelected(null) }} aria-label={t('Vacancy')}>
             {sites.map(v => <option key={v.id} value={v.id}>{v.title}</option>)}
           </select>
         )}
-        <label>Within <input type="number" min={1} max={200} value={radius}
-          onChange={e => setRadius(Math.max(1, Number(e.target.value) || 1))} /> km by car</label>
+        <label>{t('Within')} <input type="number" min={1} max={200} value={radius}
+          onChange={e => setRadius(Math.max(1, Number(e.target.value) || 1))} /> {t('km by car')}</label>
         <div className="seg">
           {(['all', 'free', 'working'] as Filter[]).map(f => (
             <button key={f} className={filter === f ? 'active' : ''} onClick={() => { setFilter(f); setSelected(null) }}>
-              {f === 'all' ? 'Everyone' : f === 'free' ? 'Free' : 'Working'}
+              {t(f === 'all' ? 'Everyone' : f === 'free' ? 'Free' : 'Working')}
             </button>
           ))}
         </div>
         <label className="checkbox-inline">
           <input type="checkbox" checked={carOnly} onChange={e => { setCarOnly(e.target.checked); setSelected(null) }} />
-          With car
+          {t('With car')}
         </label>
-        <span>{inside.length} of {pool.length} within {radius} km{carOnly ? ', with a car' : ''}</span>
+        <span>{inside.length} {t('of')} {pool.length} {t('within')} {radius} km{carOnly ? `, ${t('with a car')}` : ''}</span>
       </div>
 
       <div className="map-layout">
@@ -258,18 +260,18 @@ export function MapPanel({ vacancyId }: { vacancyId?: string }) {
           <div ref={containerRef} className="leaflet-host" />
           <div className="map-controls">
             <div className="seg seg-vertical">
-              <button onClick={() => zoom(1)} aria-label="Zoom in"><Plus /></button>
-              <button onClick={() => zoom(-1)} aria-label="Zoom out"><Minus /></button>
+              <button onClick={() => zoom(1)} aria-label={t('Zoom in')}><Plus /></button>
+              <button onClick={() => zoom(-1)} aria-label={t('Zoom out')}><Minus /></button>
             </div>
             <div className="seg">
-              <button className={basemap === 'plain' ? 'active' : ''} onClick={() => setBasemap('plain')}>Map</button>
-              <button className={basemap === 'satellite' ? 'active' : ''} onClick={() => setBasemap('satellite')}>Satellite</button>
+              <button className={basemap === 'plain' ? 'active' : ''} onClick={() => setBasemap('plain')}>{t('Map')}</button>
+              <button className={basemap === 'satellite' ? 'active' : ''} onClick={() => setBasemap('satellite')}>{t('Satellite')}</button>
             </div>
           </div>
         </Panel>
 
         <Panel className="distance-list">
-          <div className="panel-header"><div><h2>People nearby</h2><p>Road distance · driving time, one way</p></div></div>
+          <div className="panel-header"><div><h2>{t('People nearby')}</h2><p>{t('Road distance · driving time, one way')}</p></div></div>
           {inside.map(({ workerId, travel }) => {
             const worker = workerById.get(workerId)!
             const state = stateOf(workerId)
@@ -277,7 +279,7 @@ export function MapPanel({ vacancyId }: { vacancyId?: string }) {
               <button key={workerId} className={`distance-row ${selected === workerId ? 'selected' : ''}`}
                 onClick={() => setSelected(workerId)}>
                 <span><strong>{worker.fullName}</strong><small>{travel.km} km · {travel.minutes} min · {worker.city}{worker.hasCar ? ' · car' : ''}</small></span>
-                <Badge tone={state === 'free' ? 'green' : state === 'leave' ? 'orange' : 'blue'}>{STATE_LABEL[state]}</Badge>
+                <Badge tone={state === 'free' ? 'green' : state === 'leave' ? 'orange' : 'blue'}>{t(STATE_LABEL[state])}</Badge>
               </button>
             )
           })}
@@ -290,16 +292,15 @@ export function MapPanel({ vacancyId }: { vacancyId?: string }) {
       </div>
 
       <p className="map-legend-note">
-        <span><i style={{ background: 'var(--status-free)' }} />Free</span>
-        <span><i style={{ background: 'var(--status-leave)' }} />On leave</span>
-        <span><i style={{ background: 'var(--status-working)' }} />Working</span>
-        <span className="ring-note">The dashed ring is straight-line {radius} km, shown only for scale — membership is decided by road distance.</span>
+        <span><i style={{ background: 'var(--status-free)' }} />{t('Free')}</span>
+        <span><i style={{ background: 'var(--status-leave)' }} />{t('On leave')}</span>
+        <span><i style={{ background: 'var(--status-working)' }} />{t('Working')}</span>
+        <span className="ring-note">{t('The dashed ring is straight-line {radius} km, shown only for scale — membership is decided by road distance.', { radius })}</span>
       </p>
       <p className="map-note">
-        Road distances to {site.address}, one way, computed {formatDate(TRAVEL_COMPUTED_AT)} with {TRAVEL_PROFILE}.
-        Frozen deliberately: travel money is paid on these kilometres, so they change only when an address does.
+        {t('Road distances to {address}, one way, computed {date} with {profile}. Frozen deliberately: travel money is paid on these kilometres, so they change only when an address does.', { address: site.address, date: formatDate(TRAVEL_COMPUTED_AT), profile: TRAVEL_PROFILE })}
         {selected && workerById.get(selected) && (
-          <> Selected: <Link href={`/people/${selected}`}>{workerById.get(selected)!.fullName}</Link> — {travelFor(selected, siteId)?.km} km.</>
+          <> {t('Selected:')} <Link href={`/people/${selected}`}>{workerById.get(selected)!.fullName}</Link> — {travelFor(selected, siteId)?.km} km.</>
         )}
       </p>
     </>

@@ -3,6 +3,8 @@ import Link from 'next/link'
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { Briefcase, Building2, Search, Users, X } from 'lucide-react'
 import { useWorkforceData } from './workforce-data-context'
+import { searchPeople } from '@/lib/people-search'
+import { useLanguage } from '@/lib/i18n'
 
 /* Highlights the first hit of `query` inside `text` — same idea as a
    browser's own find-in-page, so it's obvious which word actually matched
@@ -26,11 +28,11 @@ function highlight(text: string, query: string) {
 type Kind = 'person' | 'company' | 'vacancy'
 type Hit = { id: string; kind: Kind; title: string; subtitle: string; href: string }
 const KIND_ICON = { person: Users, company: Building2, vacancy: Briefcase } as const
-const KIND_LABEL = { person: 'Person', company: 'Company', vacancy: 'Vacancy' } as const
 const KIND_TONE = { person: 'blue', company: 'purple', vacancy: 'orange' } as const
 
 export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { companies, vacancies, workers } = useWorkforceData()
+  const { t } = useLanguage()
   const [query, setQuery] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -52,10 +54,8 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
   const hits = useMemo<Hit[]>(() => {
     const q = query.trim().toLowerCase()
     if (!q) return []
-    const people: Hit[] = workers
-      .filter(w => w.status === 'active' && (w.fullName.toLowerCase().includes(q) || w.city?.toLowerCase().includes(q) || w.email.toLowerCase().includes(q)))
-      .slice(0, 6)
-      .map(w => ({ id: w.id, kind: 'person', title: w.fullName, subtitle: w.city || 'No city on file', href: `/people/${w.id}` }))
+    const people: Hit[] = searchPeople(workers, q)
+      .map(w => ({ id: w.id, kind: 'person', title: w.fullName, subtitle: [w.status === 'dismissed' ? 'Dismissed' : null, w.city || 'No city on file'].filter(Boolean).join(' · '), href: `/people/${w.id}` }))
     const orgs: Hit[] = companies
       .filter(c => c.name.toLowerCase().includes(q) || c.contactPerson?.toLowerCase().includes(q))
       .slice(0, 6)
@@ -65,7 +65,7 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
       .slice(0, 6)
       .map(v => ({ id: v.id, kind: 'vacancy', title: v.title, subtitle: v.address, href: `/vacancies/${v.id}` }))
     return [...people, ...orgs, ...jobs]
-  }, [query])
+  }, [companies, query, vacancies, workers])
 
   if (!open) return null
 
@@ -76,11 +76,11 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
           <Search />
           <input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && hits[0]) onClose() }}
-            placeholder="Search people, companies, vacancies…" aria-label="Search everything" />
-          <button className="icon-button" onClick={onClose} aria-label="Close search"><X /></button>
+            placeholder={t('Search people (including dismissed), companies, vacancies…')} aria-label={t('Search everything, including dismissed people')} />
+          <button className="icon-button" onClick={onClose} aria-label={t('Close search')}><X /></button>
         </div>
-        {!query.trim() && <p className="search-empty">Start typing to search people, companies and vacancies.</p>}
-        {query.trim() && !hits.length && <p className="search-empty">Nothing matches “{query}”.</p>}
+        {!query.trim() && <p className="search-empty">{t('Start typing to search people, companies and vacancies.')}</p>}
+        {query.trim() && !hits.length && <p className="search-empty">{t('Nothing matches “{query}”.', { query })}</p>}
         {hits.length > 0 && (
           <ul className="search-results">
             {hits.map(hit => {
@@ -90,7 +90,7 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
                   <Link href={hit.href} onClick={onClose} className="search-result-row">
                     <span className={`vacancy-icon icon-${KIND_TONE[hit.kind]}`}><Icon /></span>
                     <span className="search-result-text"><strong>{highlight(hit.title, query)}</strong><small>{highlight(hit.subtitle, query)}</small></span>
-                    <span className={`badge badge-${KIND_TONE[hit.kind]}`}>{KIND_LABEL[hit.kind]}</span>
+                    <span className={`badge badge-${KIND_TONE[hit.kind]}`}>{t(hit.kind === 'person' ? 'Person' : hit.kind === 'company' ? 'Company' : 'Vacancy')}</span>
                   </Link>
                 </li>
               )

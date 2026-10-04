@@ -55,7 +55,10 @@ backend. Do not set `DATABASE_URL` on Vercel.
 2. Set distinct, random values for `POSTGRES_SUPERUSER_PASSWORD`,
    `APP_DB_PASSWORD`, and `SESSION_SECRET` (at least 32 bytes). Set
    `INITIAL_ADMIN_PASSWORD` to a unique password of at least 12 characters.
-   Hex-encoded random values work well for the database passwords. For
+   Set `SUPABASE_DATABASE_URL` to the Supabase PostgreSQL connection string
+   for the Warehouse snapshot. Set `FLEXPEDIA_API_TOKEN` to enable employee
+   synchronization. Hex-encoded random values work well
+   for the database passwords. For
    example, in PowerShell generate a fresh value with:
 
    ```powershell
@@ -84,6 +87,18 @@ backend. Do not set `DATABASE_URL` on Vercel.
    ```sh
    docker compose up -d app
    ```
+
+6. Sign in and open **Sync sources**. **Sync Warehouse now** reconciles
+   Supabase workers, shifts, and absence periods by source IDs. Supabase is
+   read-only; deleted imported shifts and absences are removed locally, while
+   local-only records are retained. Disable Supabase there to stop future
+   snapshots.
+
+7. Set `FLEXPEDIA_API_TOKEN` in `.env` and restart the app. **Sync Flexpedia
+   employees** updates employee profiles from Flexpedia but never changes
+   employment status. Dismiss or restore a worker manually on the People page;
+   the worker's shifts and history remain saved. New workers receive no company
+   access until assigned locally. Flexpedia does not provide schedules.
 
 The named `postgres_data` volume persists the database across container
 restarts. The image creates a non-superuser `dispatcher` role for the app;
@@ -118,12 +133,14 @@ account already exists, the configured initial password can reset its
 password at sign-in. After signing in, remove `INITIAL_ADMIN_PASSWORD` from
 the deployment environment and keep `INITIAL_ADMIN_EMAIL` unchanged.
 
-The existing local PostgreSQL database contains real worker, absence, and
-shift data. The Compose database starts empty; its schema migrations do not
-seed or transfer records. Back up and transfer only required business tables
-through an encrypted, access-controlled process after confirming the VPS and
-data-processing arrangement are approved. Exclude local account and
-migration metadata. Never put an unencrypted dump in the repository or image.
+The local Compose database is a named Docker volume and starts empty. The
+Warehouse snapshot lives in Supabase and is imported with **Sync Warehouse
+now**; schema migrations do not copy it automatically. Never remove the
+`postgres_data` volume to stop synchronization. Supabase sync uses stable
+source IDs and reconciles imported shifts and absences in a transaction.
+Flexpedia employee synchronization preserves local worker IDs and all shift
+relationships. Employment status changes are made manually in the dispatcher,
+independently of contract presence or status in Flexpedia.
 
 Workday photos are stored as private PostgreSQL `BYTEA` data. Listing,
 uploading, viewing, and deleting them require an authenticated session; only

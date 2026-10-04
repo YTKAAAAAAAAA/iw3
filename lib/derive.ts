@@ -1,7 +1,7 @@
-import type { AssignmentInfo, DayState, ISODate, Leave, RosterEntry, StandingAssignment, Vacancy, Worker } from './types.ts'
+import type { AssignmentInfo, DayState, Demand, ISODate, Leave, RosterEntry, StandingAssignment, Vacancy, Worker } from './types.ts'
 
 export function vacancyStatus(vacancy:Vacancy, standing:StandingAssignment[], roster:RosterEntry[], today:ISODate): 'open'|'in_progress'|'archived' {
-  if (vacancy.endDate && vacancy.endDate < today) return 'archived'
+  if (vacancy.archivedAt || vacancy.endDate && vacancy.endDate < today) return 'archived'
   /* Staffed means somebody is actually on it: either a shift from today
      onwards, or a standing arrangement that has not ended. */
   const staffed = roster.some(r => r.vacancyId === vacancy.id && r.date >= today && !!r.workerId)
@@ -26,21 +26,64 @@ export const daysUntil = (date: ISODate, today: ISODate) =>
  *  ring round the pool and short enough that nothing else has to be dropped. */
 export const URGENT_DAYS = 3
 
-export function vacancyUrgency(vacancy: Vacancy, standing: StandingAssignment[], roster: RosterEntry[], today: ISODate): Urgency {
-  /* Staffed, archived or ended — nothing to chase. */
-  if (vacancyStatus(vacancy, standing, roster, today) !== 'open') return 'none'
+export function vacancyUrgency(
+  vacancy: Vacancy,
+  standing: StandingAssignment[],
+  roster: RosterEntry[],
+  today: ISODate,
+  demand: Demand[] = [],
+): Urgency {
+  if (vacancy.archivedAt || vacancy.endDate && vacancy.endDate < today
+    || !hasUnstaffedSlot(vacancy.id, standing, roster, demand, today)) return 'none'
   const days = daysUntil(vacancy.startDate, today)
   if (days < 0) return 'late'
   return days <= URGENT_DAYS ? 'soon' : 'none'
 }
 
+function hasUnstaffedSlot(
+  vacancyId: string,
+  standing: StandingAssignment[],
+  roster: RosterEntry[],
+  demand: Demand[],
+  today: ISODate,
+): boolean {
+  const activeShifts = roster.filter(shift => shift.vacancyId === vacancyId
+    && shift.date >= today && shift.outcome !== 'cancelled')
+  if (activeShifts.some(shift => shift.workerId === null)) return true
+  return demand.some(slot => {
+    if (slot.vacancyId !== vacancyId || slot.date < today || slot.headcount <= 0) return false
+    const assigned = activeShifts.filter(shift =>
+      shift.date === slot.date
+      && (slot.placeId === null || shift.placeId === slot.placeId)
+      && (slot.section === null || shift.section === slot.section)
+      && shift.workerId !== null,
+    ).length
+    const weekday = weekdayOfDate(slot.date)
+    const standingWorkers = standing.filter(assignment =>
+      assignment.vacancyId === vacancyId
+      && assignment.weekdays.includes(weekday)
+      && assignment.from <= slot.date
+      && (assignment.to === null || assignment.to >= slot.date)
+      && (slot.placeId === null || assignment.placeId === slot.placeId)
+      && (slot.section === null || assignment.section === slot.section),
+    ).length
+    return Math.max(assigned, standingWorkers) < slot.headcount
+  })
+}
+
 /** Open vacancies, worst first: already running and empty, then starting
  *  within days, then the rest — and inside each group the nearest date first,
  *  which for the late ones means the one that has been waiting longest. */
-export function sortByUrgency(vacancies: Vacancy[], standing: StandingAssignment[], roster: RosterEntry[], today: ISODate): Vacancy[] {
+export function sortByUrgency(
+  vacancies: Vacancy[],
+  standing: StandingAssignment[],
+  roster: RosterEntry[],
+  today: ISODate,
+  demand: Demand[] = [],
+): Vacancy[] {
   const rank: Record<Urgency, number> = { late: 0, soon: 1, none: 2 }
   return [...vacancies].sort((a, b) =>
-    rank[vacancyUrgency(a, standing, roster, today)] - rank[vacancyUrgency(b, standing, roster, today)]
+    rank[vacancyUrgency(a, standing, roster, today, demand)] - rank[vacancyUrgency(b, standing, roster, today, demand)]
     || a.startDate.localeCompare(b.startDate)
     || a.title.localeCompare(b.title))
 }
@@ -143,7 +186,7 @@ export function availableWorkers(workers:Worker[], date:ISODate, roster:RosterEn
 /* ------------------------------------------------------------------
    Coverage: what the client asked for vs what is actually staffed.
    ------------------------------------------------------------------ */
-import type { Demand, ShiftOutcome } from './types.ts'
+import type { ShiftOutcome } from './types.ts'
 import { minutesOf } from './types.ts'
 import { formatDate, weekdayOf as weekdayOfDate } from './types.ts'
 

@@ -15,6 +15,7 @@ import { lastNameOf, reportFilename, reportRows, reportSheet } from '@/lib/hours
 import { FEATURES } from '@/lib/features'
 import { VacancySchedule } from './vacancy-schedule'
 import { AddressPicker, type PickedAddress } from './address-picker'
+import { useLanguage } from '@/lib/i18n'
 /* Leaflet touches `window` on import and weighs more than the rest of the
    page, so the map is fetched only when asked for. Most of the time the
    kilometres next to each candidate are all anyone needs. */
@@ -33,13 +34,139 @@ export function Overview(){
 }
 function PeopleTable({compact=false}:{compact?:boolean}){
   const {workers,companies,roster,leaves,vacancies}=useWorkforceData()
+  const {t}=useLanguage()
   const [query,setQuery]=useState('');const [availability,setAvailability]=useState('All availability');const [company,setCompany]=useState('All companies');const [date,setDate]=useState(TODAY);const [page,setPage]=useState(1)
   const active=workers.filter(w=>w.status==='active')
   const filtered=active.filter(w=>w.fullName.toLowerCase().includes(query.toLowerCase())&&(availability==='All availability'||(availability==='Available'&&dayStatus(w.id,date,roster,leaves,vacancies)==='free')||(availability==='Working'&&dayStatus(w.id,date,roster,leaves,vacancies)==='working')||(availability==='Leave'&&dayStatus(w.id,date,roster,leaves,vacancies)==='leave'))&&(company==='All companies'||w.companyAccess.includes(company)))
-  return <div className="table-wrap">{!compact&&<div className="table-toolbar"><div className="search-field"><Search/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search people" aria-label="Search people"/></div><select value={company} onChange={e=>setCompany(e.target.value)} aria-label="Company filter"><option>All companies</option>{companies.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select><select value={availability} onChange={e=>setAvailability(e.target.value)} aria-label="Availability filter"><option>All availability</option><option>Available</option><option>Working</option><option>Leave</option></select><label className="date-filter"><CalendarDays/><input type="date" value={date} onChange={e=>setDate(e.target.value)} aria-label="Availability date"/></label><button className="button button-secondary"><Filter/>More filters</button><span className="result-count">Showing {Math.min((page-1)*25+1,filtered.length)}–{Math.min(page*25,filtered.length)} of {filtered.length} people</span></div>}<table><thead><tr><th>Person</th>{!FEATURES.leanPeopleList&&<th>Phone</th>}<th>Company access</th><th>Availability · {formatDate(date)}</th><th><span className="visually-hidden">Open profile</span></th></tr></thead><tbody>{filtered.slice(0,compact?5:25).slice((page-1)*25).map(w=>{const state=dayStatus(w.id,date,roster,leaves,vacancies);return <tr key={w.id}><td><Link className="person-cell" href={`/people/${w.id}`}><span><strong>{w.fullName}</strong><small>{FEATURES.leanPeopleList?w.city:`${w.city} · ${w.email}`}</small></span></Link></td>{!FEATURES.leanPeopleList&&<td>{w.mobile}</td>}<td><div className="access-list">{w.companyAccess.slice(0,3).map(id=><span key={id}>{companies.find(c=>c.id===id)?.name}</span>)}</div></td><td><Badge tone={state==='free'?'green':state==='leave'?'orange':'blue'}>{state==='free'?'Available':state==='leave'?'Leave':'Working'}</Badge><small className="table-detail">{state==='working'?(currentAssignment(w.id,date,roster,vacancies)?.title||'Rostered shift'):state==='leave'?'On leave':'Ready for assignment'}</small></td><td><Link className="icon-button" href={`/people/${w.id}`} aria-label={`Open ${w.fullName}`}><ArrowUpRight/></Link></td></tr>})}</tbody></table>{!filtered.length&&<StateBlock title="No people match these filters" description="Try changing the date, access company, or availability."/>}</div>
+  return <div className="table-wrap">{!compact&&<div className="table-toolbar"><div className="search-field"><Search/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder={t('Search people')} aria-label={t('Search people')}/></div><select value={company} onChange={e=>setCompany(e.target.value)} aria-label={t('Company filter')}><option value="All companies">{t('All companies')}</option>{companies.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select><select value={availability} onChange={e=>setAvailability(e.target.value)} aria-label={t('Availability filter')}><option value="All availability">{t('All availability')}</option><option value="Available">{t('Available')}</option><option value="Working">{t('Working')}</option><option value="Leave">{t('Leave')}</option></select><label className="date-filter"><CalendarDays/><input type="date" value={date} onChange={e=>setDate(e.target.value)} aria-label={t('Availability date')}/></label><button className="button button-secondary"><Filter/>{t('More filters')}</button><span className="result-count">{t('Showing {from}–{to} of {count} people',{from:Math.min((page-1)*25+1,filtered.length),to:Math.min(page*25,filtered.length),count:filtered.length})}</span></div>}<table><thead><tr><th>{t('Person')}</th>{!FEATURES.leanPeopleList&&<th>{t('Phone')}</th>}<th>{t('Company access')}</th><th>{t('Availability · {date}',{date:formatDate(date)})}</th><th><span className="visually-hidden">{t('Open profile')}</span></th></tr></thead><tbody>{filtered.slice(0,compact?5:25).slice((page-1)*25).map(w=>{const state=dayStatus(w.id,date,roster,leaves,vacancies);return <tr key={w.id}><td><Link className="person-cell" href={`/people/${w.id}`}><span><strong>{w.fullName}</strong><small>{FEATURES.leanPeopleList?w.city:`${w.city} · ${w.email}`}</small></span></Link></td>{!FEATURES.leanPeopleList&&<td>{w.mobile}</td>}<td><div className="access-list">{w.companyAccess.slice(0,3).map(id=><span key={id}>{companies.find(c=>c.id===id)?.name}</span>)}</div></td><td><Badge tone={state==='free'?'green':state==='leave'?'orange':'blue'}>{t(state==='free'?'Available':state==='leave'?'Leave':'Working')}</Badge><small className="table-detail">{state==='working'?(currentAssignment(w.id,date,roster,vacancies)?.title||t('Rostered shift')):state==='leave'?t('On leave'):t('Ready for assignment')}</small></td><td><Link className="icon-button" href={`/people/${w.id}`} aria-label={t('Open {name}',{name:w.fullName})}><ArrowUpRight/></Link></td></tr>})}</tbody></table>{!filtered.length&&<StateBlock title="No people match these filters" description="Try changing the date, access company, or availability."/>}</div>
 }
-export function PeopleView(){const dismissed=useSearchParams().get('status')==='dismissed';return <AppShell><div className="content-inner"><PageHeading eyebrow="Workforce directory" title={dismissed?'Dismissed people':'People'} description={dismissed?'Historical records remain available for reports and hours.':'Manage availability, company access and assignments.'} action={<Link className="button button-secondary" href={dismissed?'/people':'/people?status=dismissed'}>{dismissed?'Active people':'View dismissed'}</Link>}/><Panel className="full-panel">{dismissed?<DismissedList/>:<PeopleTable/>}</Panel></div></AppShell>}
-function DismissedList(){const {workers,hours}=useWorkforceData();const list=workers.filter(w=>w.status==='dismissed');return <div className="table-wrap"><table><thead><tr><th>Person</th><th>Dismissed on</th><th>History</th><th><span className="visually-hidden">Status</span></th></tr></thead><tbody>{list.map(w=><tr key={w.id}><td><Link className="person-cell" href={`/people/${w.id}`}><span><strong>{w.fullName}</strong><small>{w.email}</small></span></Link></td><td>{formatDate(w.dismissedAt)}</td><td>{hours.filter(h=>h.workerId===w.id).length} saved hours</td><td><Badge tone="neutral">Dismissed</Badge></td></tr>)}</tbody></table></div>}
+export function PeopleView(){
+  const {t}=useLanguage()
+  const dismissed=useSearchParams().get('status')==='dismissed'
+  const [adding, setAdding] = useState(false)
+  const [dismissing, setDismissing] = useState(false)
+  return <AppShell><div className="content-inner">
+    <PageHeading eyebrow="Workforce directory" title={dismissed?'Dismissed people':'People'} description={dismissed?'Historical records remain available for reports and hours.':'Manage availability, company access and assignments.'} action={<Link className="button button-secondary" href={dismissed?'/people':'/people?status=dismissed'}>{t(dismissed?'Active people':'View dismissed')}</Link>}/>
+    {!dismissed&&<div className="manual-add-toolbar">
+      <button className="button button-secondary" onClick={()=>setDismissing(true)}>{t('Dismiss manually')}</button>
+      <button className="button button-primary" onClick={()=>setAdding(true)}><Plus/>{t('Add manually')}</button>
+    </div>}
+    <Panel className="full-panel">{dismissed?<DismissedList/>:<PeopleTable/>}</Panel>
+    {adding&&<AddManualWorkerDialog onClose={()=>setAdding(false)}/>}
+    {dismissing&&<DismissWorkerDialog onClose={()=>setDismissing(false)}/>}
+  </div></AppShell>
+}
+
+function DismissWorkerDialog({onClose}:{onClose:()=>void}){
+  const router=useRouter()
+  const {workers}=useWorkforceData()
+  const {t}=useLanguage()
+  const active=workers.filter(worker=>worker.status==='active')
+  const [workerId,setWorkerId]=useState('')
+  const [error,setError]=useState('')
+  const [saving,setSaving]=useState(false)
+  const {closing,close:dismiss}=useExit(onClose)
+
+  const submit=async()=>{
+    const worker=active.find(candidate=>candidate.id===workerId)
+    if(!worker||!window.confirm(t('Dismiss {name}? Their shifts and history will be preserved.',{name:worker.fullName})))return
+    setSaving(true);setError('')
+    try{
+      const response=await fetch(`/api/people/${workerId}/dismiss`,{method:'POST'})
+      const data=await response.json()
+      if(!response.ok)throw new Error(data.error||'Could not dismiss this person.')
+      router.refresh()
+      dismiss()
+    }catch(cause){
+      setError(cause instanceof Error?cause.message:'Could not dismiss this person. Please try again.')
+    }finally{
+      setSaving(false)
+    }
+  }
+
+  return <div className={`dialog-backdrop ${closing?'closing':''}`} onClick={dismiss}>
+    <section className="dialog" role="dialog" aria-modal="true" aria-labelledby="dismiss-worker-title" onClick={event=>event.stopPropagation()}>
+      <div className="panel-header"><div><h2 id="dismiss-worker-title">{t('Dismiss a worker')}</h2><p>{t('The worker and their shift history will remain saved. Flexpedia profile sync will not change this status.')}</p></div><button className="icon-button" aria-label={t('Close')} onClick={dismiss}><X/></button></div>
+      <label>{t('Person')}<select value={workerId} onChange={event=>setWorkerId(event.target.value)} disabled={saving}>
+        <option value="">{t('Select a person')}</option>
+        {active.map(worker=><option key={worker.id} value={worker.id}>{worker.fullName}</option>)}
+      </select></label>
+      {error&&<p role="alert" className="error-message">{t(error)}</p>}
+      <div className="form-footer"><button className="button button-secondary" onClick={dismiss} disabled={saving}>{t('Cancel')}</button><button className="button button-primary" onClick={()=>void submit()} disabled={saving||!workerId}>{saving?t('Saving…'):t('Dismiss')}</button></div>
+    </section>
+  </div>
+}
+
+function AddManualWorkerDialog({onClose}:{onClose:()=>void}){
+  const router=useRouter()
+  const {companies}=useWorkforceData()
+  const [fullName,setFullName]=useState('')
+  const [companyIds,setCompanyIds]=useState<string[]>([])
+  const [conflicts,setConflicts]=useState<Array<{id:number;fullName:string}>>([])
+  const [sharedResolution,setSharedResolution]=useState<{id:string;fullName:string}|null>(null)
+  const [error,setError]=useState('')
+  const [saving,setSaving]=useState(false)
+  const {closing,close:dismiss}=useExit(onClose)
+
+  const save=async(confirmDuplicates=false,resolutionWorkerId?:string)=>{
+    setSaving(true);setError('')
+    try{
+      const response=await fetch('/api/people',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fullName,companyIds,confirmDuplicates,...(resolutionWorkerId?{resolutionWorkerId}:{})})})
+      const data=await response.json()
+      if(response.status===409&&Array.isArray(data.conflicts)){
+        setConflicts(data.conflicts)
+        setError(data.error||'Possible existing people were found.')
+        return
+      }
+      if(!response.ok)throw new Error(data.error||'Could not save the person.')
+      if(data.alreadyResolved===true||data.resolvedNow===true){
+        setSharedResolution(data.worker)
+        setConflicts([])
+        setError(data.alreadyResolved
+          ? 'This identity was already resolved by another dispatcher. The shared choice is shown below; no duplicate was created.'
+          : 'Your choice is now shared. Other dispatchers will use this same person.')
+        router.refresh()
+        return
+      }
+      dismiss()
+      router.refresh()
+    }catch(cause){
+      setError(cause instanceof Error?cause.message:'Could not save the person. Please try again.')
+    }finally{setSaving(false)}
+  }
+
+  return <div className={`dialog-backdrop ${closing?'closing':''}`} onClick={dismiss}>
+    <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="manual-worker-title" onClick={e=>e.stopPropagation()}>
+      <div className="panel-header"><div><h2 id="manual-worker-title">Add person manually</h2><p>This person can be linked to Flexpedia later without replacing their local schedule history.</p></div><button className="icon-button" onClick={dismiss} aria-label="Close" disabled={saving}><X/></button></div>
+      <label>Full name<input autoFocus value={fullName} maxLength={200} onChange={e=>{setFullName(e.target.value);setConflicts([])}} placeholder="First and last name"/></label>
+      <fieldset className="manual-worker-companies"><legend>Company access</legend>{companies.map(company=><label key={company.id}><input type="checkbox" checked={companyIds.includes(company.id)} onChange={()=>setCompanyIds(current=>current.includes(company.id)?current.filter(id=>id!==company.id):[...current,company.id])}/>{company.name}</label>)}</fieldset>
+      {!companies.length&&<p className="dialog-note" role="alert">Create a company before adding a person.</p>}
+      {error&&<p className="dialog-note" role="alert">{error}</p>}
+      {conflicts.length>0&&<><ul className="manual-worker-conflicts">{conflicts.map(person=><li key={person.id}><span><strong>{person.fullName}</strong> — same name</span><button type="button" className="button button-secondary button-small" disabled={saving} onClick={()=>void save(false,String(person.id))}>Choose this person</button></li>)}</ul><p className="dialog-note">The first dispatcher to choose will decide for everyone submitting this same name; selecting an existing person never merges records.</p></>}
+      {sharedResolution&&<div className="form-footer"><Link className="button button-primary" href={`/people/${sharedResolution.id}`} onClick={dismiss}>Open {sharedResolution.fullName}</Link></div>}
+      {!sharedResolution&&<div className="form-footer"><button className="button button-secondary" disabled={saving} onClick={dismiss}>Cancel</button>{conflicts.length>0?<button className="button button-primary" disabled={saving||!companyIds.length} onClick={()=>void save(true)}>{saving?'Saving…':'Add as a separate person'}</button>:<button className="button button-primary" disabled={saving||!fullName.trim()||!companyIds.length} onClick={()=>void save()}>{saving?'Saving…':'Add person'}</button>}</div>}
+    </div>
+  </div>
+}
+function DismissedList(){const {workers,hours}=useWorkforceData();const list=workers.filter(w=>w.status==='dismissed');return <div className="table-wrap"><table><thead><tr><th>Person</th><th>Dismissed on</th><th>History</th><th>Status</th><th><span className="visually-hidden">Actions</span></th></tr></thead><tbody>{list.map(w=><tr key={w.id}><td><Link className="person-cell" href={`/people/${w.id}`}><span><strong>{w.fullName}</strong><small>{w.email}</small></span></Link></td><td>{formatDate(w.dismissedAt)}</td><td>{hours.filter(h=>h.workerId===w.id).length} saved hours</td><td><Badge tone="neutral">Dismissed</Badge></td><td><RestoreWorkerButton id={w.id} name={w.fullName}/></td></tr>)}</tbody></table>{!list.length&&<StateBlock title="No dismissed people" description="Dismissed workers will appear here so they can be restored."/>}</div>}
+
+function RestoreWorkerButton({id,name}:{id:string;name:string}){
+  const router=useRouter()
+  const [saving,setSaving]=useState(false)
+  const [error,setError]=useState('')
+  const restore=async()=>{
+    setSaving(true);setError('')
+    try{
+      const response=await fetch(`/api/people/${id}/restore`,{method:'POST'})
+      const data=await response.json()
+      if(!response.ok)throw new Error(data.error||'Could not restore this person.')
+      router.refresh()
+    }catch(cause){
+      setError(cause instanceof Error?cause.message:'Could not restore this person. Please try again.')
+    }finally{setSaving(false)}
+  }
+  return <div className="restore-worker-action"><button className="button button-secondary button-small" disabled={saving} onClick={()=>void restore()}>{saving?'Restoring…':'Restore'}</button>{error&&<span role="alert">{error}</span>}<span className="visually-hidden">{name}</span></div>
+}
 /* ------------------------------------------------------------------
    The worker's month.
 
@@ -282,13 +409,41 @@ const [hasVog,setHasVog]=useState(w.hasVog)
 const [courseDays,setCourseDays]=useState(w.courseDays);return <AppShell title="Person"><div className="content-inner"><div className="back-link"><Link href="/people">← Back to people</Link></div>{w.status==='dismissed'&&<div className="dismissed-banner"><CircleAlert/><span>Dismissed on {formatDate(w.dismissedAt)}. This record is read-only except internal notes.</span></div>}<PageHeading eyebrow="Worker profile" title={w.fullName} description={`${w.city} · ${w.email}`} action={<Badge tone={w.status==='active'?'green':'neutral'}>{w.status}</Badge>}/><div className="profile-grid"><div className="profile-left"><Panel><div className="profile-hero"><div><h2>{w.fullName}</h2><p>{w.initials} · {w.nationality}</p></div></div><div className="detail-grid">{[['First name',w.firstName],['Insertion',w.insertion],['Last name',w.lastName],['Gender',w.gender],['Birth date',formatDate(w.birthDate)],['Address',[w.street,w.streetNumber,w.streetNumberAddition].filter(Boolean).join(' ')],['Postcode / city',[w.postCode,w.city].filter(Boolean).join(' · ')],['Residence country',w.residenceCountry],['Nationality',w.nationality],['Course days',<div className="seg seg-small course-days" key="course">{WEEKDAYS.map(d=><button type="button" key={d} className={courseDays.includes(d)?'active':''} disabled={w.status==='dismissed'||profileSaving} onClick={()=>{const next=courseDays.includes(d)?courseDays.filter(x=>x!==d):[...courseDays,d];setCourseDays(next);void saveProfile({courseDays:next})}}>{weekdayLabel[d]}</button>)}</div>],
 ['VOG',<div className="seg seg-small" key="vog">{([[true,'On file'],[false,'None']] as const).map(([value,label])=><button type="button" key={label} className={hasVog===value?'active':''} disabled={w.status==='dismissed'||profileSaving} onClick={()=>{setHasVog(value);void saveProfile({hasVog:value})}}>{label}</button>)}</div>],
 ['Own transport',<div className="seg seg-small" key="car">{([[true,'Car'],[false,'No car']] as const).map(([value,label])=><button type="button" key={label} className={hasCar===value?'active':''} disabled={w.status==='dismissed'||profileSaving} onClick={()=>{setHasCar(value);void saveProfile({hasCar:value})}}>{label}</button>)}</div>],['Phone',w.phone],['Mobile',w.mobile],['Email',w.email]].map(([label,value])=><div key={label as string}><span>{label}</span>{typeof value==='string'||value===null||value===undefined?<strong>{value||'—'}</strong>:value}</div>)}</div>{w.lat===null&&<div className="inline-note"><MapPin/>Coordinates are not defined. This person is excluded from distance matching.</div>}<div className="section-divider"/><div className="panel-header"><div><h2>Manatal CV</h2><p>Linked resume remains in Manatal; no copy is stored here.</p></div></div>{w.manatalLink==='linked'?<div className="match-row"><a className="button button-secondary" href={w.cvUrl||'#'} target="_blank" rel="noreferrer">Open CV in Manatal <ArrowUpRight/></a></div>:w.manatalLink==='not_found'?<div className="match-row"><Badge tone="orange">Not found in Manatal</Badge><button className="button button-secondary">Link manually</button></div>:<div className="match-row"><Badge tone="orange">Several candidates match this email</Badge><select aria-label="Select Manatal candidate">{manatalCandidates.map(c=><option key={c.id}>{c.name} · {c.email}</option>)}</select><button className="button button-secondary">Link candidate</button></div>}</Panel><Panel><div className="panel-header"><div><h2>Internal notes</h2><p>Only this field is editable in the worker profile.</p></div></div><textarea value={notes} onChange={e=>setNotes(e.target.value)} disabled={w.status==='dismissed'||profileSaving} aria-label="Internal notes"/><div className="form-footer"><button className="button button-primary" disabled={w.status==='dismissed'||profileSaving} onClick={()=>void saveProfile({notes})}>{profileSaving?'Saving…':'Save notes'}</button></div></Panel><Panel><div className="panel-header"><div><h2>Company access</h2><p>Access permits work at company sites; it is not an assignment.</p></div></div>{accessError&&<p className="dialog-note" role="alert">{accessError}</p>}{companies.map(c=><label className="access-toggle" key={c.id}><span><strong>{c.name}</strong><small>{c.contactPerson}</small></span><input type="checkbox" checked={access.includes(c.id)} onChange={()=>void toggleCompanyAccess(c.id)} disabled={w.status==='dismissed'||profileSaving}/></label>)}</Panel></div><div className="profile-right"><Panel><Calendar workerId={w.id}/></Panel></div></div></div></AppShell>}
-export function VacanciesView(){const {vacancies,standing,roster,companies}=useWorkforceData();const [tab,setTab]=useState<'open'|'in_progress'|'archived'>('open')
-/* Worst first: a job that has already started with nobody on it outranks one
-   starting on Friday, and both outrank the quiet ones. Inside each group the
-   nearest date comes first — for the late ones that is the longest wait. */
-const list=sortByUrgency(vacancies.filter(v=>vacancyStatus(v,standing,roster,TODAY)===tab),standing,roster,TODAY);return <AppShell><div className="content-inner"><PageHeading eyebrow="Assignments" title="Vacancies" description="Client orders and the people assigned to them." action={<Link className="button button-primary" href="/vacancies/new"><Plus/>Create vacancy</Link>}/><div className="tabs">{(['open','in_progress','archived'] as const).map(t=><button key={t} onClick={()=>setTab(t)} className={tab===t?'active':''}>{t==='in_progress'?'In progress':t[0].toUpperCase()+t.slice(1)} <span>{vacancies.filter(v=>vacancyStatus(v,standing,roster,TODAY)===t).length}</span></button>)}</div><Panel className="full-panel">{list.length?list.map(v=>{const urgency=vacancyUrgency(v,standing,roster,TODAY)
-const note=urgencyNote(v,urgency,TODAY)
-return <Link className={`vacancy-row urgency-${urgency}`} href={`/vacancies/${v.id}`} key={v.id}><div className="vacancy-icon"><Briefcase/></div><div><strong>{v.title}</strong><span>{companies.find(c=>c.id===v.companyId)?.name} · {v.address}</span></div><Badge tone={urgency==='late'?'urgent':urgency==='soon'?'orange':tab==='open'?'green':tab==='archived'?'neutral':'blue'}>{note?(urgency==='late'?'Unstaffed':'Starts soon'):tab==='in_progress'?'In progress':tab[0].toUpperCase()+tab.slice(1)}</Badge><small>{note??`${v.places.length?`${v.places.length} places`:'single site'} · ${v.trackHoursManually?'Hours tracked manually':'No manual hours'}`}</small><ArrowUpRight/></Link>}):<StateBlock title="No vacancies in this view" description="Create a vacancy to start assigning people." action={<Link href="/vacancies/new" className="button button-primary"><Plus/>Create vacancy</Link>}/>}</Panel></div></AppShell>}
+export function VacanciesView(){
+  const {vacancies,standing,roster,companies,demand}=useWorkforceData()
+  const {t}=useLanguage()
+  const [tab,setTab]=useState<'open'|'in_progress'|'archived'>('open')
+  const [companyId,setCompanyId]=useState('all')
+  const filtered=vacancies.filter(v=>companyId==='all'||v.companyId===companyId)
+  /* Worst first: a job with a real unstaffed slot outranks one starting soon. */
+  const list=sortByUrgency(
+    filtered.filter(v=>vacancyStatus(v,standing,roster,TODAY)===tab),
+    standing,roster,TODAY,demand,
+  )
+  return <AppShell><div className="content-inner">
+    <PageHeading eyebrow="Assignments" title="Vacancies" description="Client orders and the people assigned to them." action={<Link className="button button-primary" href="/vacancies/new"><Plus/>Create vacancy</Link>}/>
+    <div className="table-toolbar vacancy-company-filter">
+      <label>{t('Company filter')}
+        <select value={companyId} onChange={event=>setCompanyId(event.target.value)} aria-label={t('Company filter')}>
+          <option value="all">{t('All companies')}</option>
+          {companies.map(company=><option key={company.id} value={company.id}>{company.name}</option>)}
+        </select>
+      </label>
+    </div>
+    <div className="tabs">{(['open','in_progress','archived'] as const).map(value=><button key={value} onClick={()=>setTab(value)} className={tab===value?'active':''}>{value==='in_progress'?t('In progress'):t(value[0].toUpperCase()+value.slice(1))} <span>{filtered.filter(v=>vacancyStatus(v,standing,roster,TODAY)===value).length}</span></button>)}</div>
+    <Panel className="full-panel">{list.length?list.map(v=>{
+      const urgency=vacancyUrgency(v,standing,roster,TODAY,demand)
+      const note=urgencyNote(v,urgency,TODAY)
+      return <Link className={`vacancy-row urgency-${urgency}`} href={`/vacancies/${v.id}`} key={v.id}>
+        <div className="vacancy-icon"><Briefcase/></div>
+        <div><strong>{v.title}</strong><span>{companies.find(c=>c.id===v.companyId)?.name} · {v.address}</span></div>
+        <Badge tone={urgency==='late'?'urgent':urgency==='soon'?'orange':tab==='open'?'green':tab==='archived'?'neutral':'blue'}>{note?(urgency==='late'?'Unstaffed':'Starts soon'):tab==='in_progress'?t('In progress'):t(tab[0].toUpperCase()+tab.slice(1))}</Badge>
+        <small>{note??`${v.places.length?`${v.places.length} places`:'single site'} · ${v.trackHoursManually?t('Hours tracked manually'):t('No manual hours')}`}</small>
+        <ArrowUpRight/>
+      </Link>
+    }):<StateBlock title="No vacancies in this view" description="Create a vacancy to start assigning people." action={<Link href="/vacancies/new" className="button button-primary"><Plus/>Create vacancy</Link>}/>}</Panel>
+  </div></AppShell>
+}
 
 /* ------------------------------------------------------------------
    One form for a vacancy, used both to create one and to edit one.
@@ -497,7 +652,7 @@ function VacancyFields({ draft, set }: { draft: VacancyDraft; set: (patch: Parti
   )
 }
 
-export function VacancyView({id}:{id:string}){const router=useRouter();const {vacancies,standing,roster,companies}=useWorkforceData();const found=vacancies.find(x=>x.id===id)||vacancies[0]
+export function VacancyView({id}:{id:string}){const router=useRouter();const {vacancies,standing,roster,companies}=useWorkforceData();const {t}=useLanguage();const found=vacancies.find(x=>x.id===id)||vacancies[0]
 const [showMap,setShowMap]=useState(false)
 /* Everything about a vacancy moves once it is running: the client renames the
    job, opens a hall, drops the end date, changes the hours. So Edit opens the
@@ -509,6 +664,8 @@ const set=(patch:Partial<VacancyDraft>)=>setDraft(cur=>({...cur,...patch}))
 const startEditing=()=>{setDraft(draftFromVacancy(v));setEditing(true)}
 const [saving,setSaving]=useState(false)
 const [saveError,setSaveError]=useState('')
+const [archiveSaving,setArchiveSaving]=useState(false)
+const [archiveError,setArchiveError]=useState('')
 const save=async()=>{
   setSaving(true);setSaveError('')
   try{
@@ -545,10 +702,36 @@ const save=async()=>{
   }catch(cause){setSaveError(cause instanceof Error?cause.message:'Could not save vacancy settings.')}
   finally{setSaving(false)}
 }
+const changeArchiveStatus=async(archived:boolean)=>{
+  if(archiveSaving)return
+  setArchiveSaving(true);setArchiveError('')
+  try{
+    const response=await fetch(`/api/vacancies/${encodeURIComponent(v.id)}`,{
+      method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({archived}),
+    })
+    const result:unknown=await response.json()
+    if(!response.ok){
+      const message=typeof result==='object'&&result!==null&&'error'in result&&typeof result.error==='string'?result.error:'Could not update vacancy archive status.'
+      setArchiveError(message);return
+    }
+    if(typeof result!=='object'||result===null||!('archivedAt'in result)){
+      throw new Error('The server returned an invalid archive response.')
+    }
+    const archivedAt=result.archivedAt
+    if(archivedAt!==null&&typeof archivedAt!=='string'){
+      throw new Error('The server returned an invalid archive response.')
+    }
+    setVacancy(current=>({...current,archivedAt}))
+    router.refresh()
+  }catch(cause){setArchiveError(cause instanceof Error?cause.message:'Could not update vacancy archive status.')}
+  finally{setArchiveSaving(false)}
+}
 const status=vacancyStatus(v,standing,roster,TODAY)
+const canRestore=v.archivedAt!==null&&v.archivedAt!==undefined&&(!v.endDate||v.endDate>=TODAY)
+const ended=status==='archived'&&!canRestore
 return <AppShell title="Vacancy"><div className="content-inner"><div className="back-link"><Link href="/vacancies">← Back to vacancies</Link></div><PageHeading eyebrow="Vacancy detail" title={v.title} description={`${companies.find(c=>c.id===v.companyId)?.name} · ${v.address}`} action={<Badge tone={status==='archived'?'neutral':status==='open'?'orange':'green'}>{status.replace('_',' ')}</Badge>}/><div className="vacancy-meta"><span><MapPin/>{v.address}</span><span><CalendarDays/>{formatDate(v.startDate)} – {v.endDate?formatDate(v.endDate):'Open-ended'}</span><span>{v.trackHoursManually?'Hours tracked manually':'Hours not tracked manually'}</span></div>
 
-<Panel className="full-panel"><div className="panel-header"><div><h2>Details</h2><p>{editing?'Every field the client can ask us to change.':'What the team does here, and how the job is set up.'}</p></div>{!editing&&<button className="button button-secondary" onClick={startEditing}>Edit</button>}</div>{editing?<div className="vacancy-editor"><VacancyFields draft={draft} set={set}/>{saveError&&<p className="dialog-note" role="alert">{saveError}</p>}<div className="form-footer"><button className="button button-secondary" disabled={saving} onClick={()=>setEditing(false)}>Cancel</button><button className="button button-primary" disabled={saving} onClick={save}>{saving?'Saving…':'Save vacancy'}</button></div></div>:<><p className="muted-copy panel-body">{v.description||'No description yet.'}</p>{Boolean(v.requirements?.length)&&<div className="vacancy-requirements"><h3>What this vacancy requires</h3>{v.requirements?.map(requirement=><div className="vacancy-requirement" key={requirement.id}><span><strong>{requirement.label}</strong><small>{requirement.kind}</small></span><Badge tone={requirement.required?'orange':'neutral'}>{requirement.required?'Required':'Preferred'}</Badge></div>)}</div>}</>}</Panel>
+<Panel className="full-panel"><div className="panel-header"><div><h2>Details</h2><p>{editing?'Every field the client can ask us to change.':'What the team does here, and how the job is set up.'}</p></div>{!editing&&<div className="inline-actions">{status==='archived'?canRestore&&<button className="button button-secondary" disabled={archiveSaving} onClick={()=>void changeArchiveStatus(false)}>{archiveSaving?t('Saving…'):t('Restore vacancy')}</button>:<button className="button button-secondary" disabled={archiveSaving} onClick={()=>void changeArchiveStatus(true)}>{archiveSaving?t('Saving…'):t('Archive vacancy')}</button>}<button className="button button-secondary" onClick={startEditing}>Edit</button></div>}</div>{archiveError&&<p className="dialog-note" role="alert">{t(archiveError)}</p>}{ended&&v.endDate&&v.endDate<TODAY&&<p className="field-hint">{t('This vacancy ended. Update its end date before restoring it.')}</p>}{editing?<div className="vacancy-editor"><VacancyFields draft={draft} set={set}/>{saveError&&<p className="dialog-note" role="alert">{saveError}</p>}<div className="form-footer"><button className="button button-secondary" disabled={saving} onClick={()=>setEditing(false)}>Cancel</button><button className="button button-primary" disabled={saving} onClick={save}>{saving?'Saving…':'Save vacancy'}</button></div></div>:<><p className="muted-copy panel-body">{v.description||'No description yet.'}</p>{Boolean(v.requirements?.length)&&<div className="vacancy-requirements"><h3>What this vacancy requires</h3>{v.requirements?.map(requirement=><div className="vacancy-requirement" key={requirement.id}><span><strong>{requirement.label}</strong><small>{requirement.kind}</small></span><Badge tone={requirement.required?'orange':'neutral'}>{requirement.required?'Required':'Preferred'}</Badge></div>)}</div>}</>}</Panel>
 
 {FEATURES.schedulePattern&&<Panel className="full-panel"><div className="panel-header"><div><h2>Schedule</h2><p>How this object is normally staffed.</p></div></div><ul className="schedule-lines">{describeSchedule(v).map(line=><li key={line}>{line}</li>)}</ul></Panel>}
 

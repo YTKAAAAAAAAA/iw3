@@ -33,6 +33,8 @@ services:
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://dispatcher:${APP_DB_PASSWORD}@postgres:5432/dispatcher
+      SUPABASE_DATABASE_URL: ${SUPABASE_DATABASE_URL:-}
+      FLEXPEDIA_API_TOKEN: ${FLEXPEDIA_API_TOKEN:-}
       SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in .env}
       BACKEND_PROXY_SECRET: ${BACKEND_PROXY_SECRET:-}
       INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL:-dispatcher@local}

@@ -151,7 +151,7 @@ export async function getWarehousePerson(id: number): Promise<WarehousePersonPro
     const result = await db.query<WorkerRow & { phone: string | null; notes: string | null }>(`
       SELECT w.id, w.full_name, w.preferred_site, s.name AS preferred_site_name,
         w.rating, w.cc, w.fixed_course_days, w.is_active, w.is_fired, w.recommend,
-        w.whatsapp_phone AS phone, w.notes
+        COALESCE(w.flexpedia_mobile, w.flexpedia_phone) AS phone, w.notes
       FROM worker w
       LEFT JOIN site s ON s.slug = w.preferred_site
       WHERE w.id = $1
@@ -340,14 +340,29 @@ export async function searchWarehouse(q: string) {
 export async function getWarehouseAppData(): Promise<WorkforceData> {
   await assertSession()
   return withDb(async db => {
-    const [workerResult, siteResult, shiftResult, absenceResult, companyResult, vacancyResult, requirementResult, visibilityResult, workerCompanyResult, workerCourseResult, workerQualificationResult, manualHoursResult, scheduleStateResult] = await Promise.all([
+    const [workerResult, siteResult, shiftResult, absenceResult, companyResult, vacancyResult, requirementResult, visibilityResult, workerCompanyResult, workerCourseResult, workerQualificationResult, manualHoursResult, scheduleStateResult, vacancyDemandResult] = await Promise.all([
       db.query<{
         id: number; full_name: string; preferred_site: string | null
-        cc: string | null; notes: string | null; whatsapp_phone: string | null
+        cc: string | null; notes: string | null
         fixed_course_days: string | null; recommend: boolean; is_active: boolean; is_fired: boolean
         flexpedia_id: number | null
-      }>(`SELECT id, full_name, preferred_site, rating, cc, notes, whatsapp_phone,
-        fixed_course_days, recommend, is_active, is_fired, flexpedia_id FROM worker ORDER BY id`),
+        flexpedia_initials: string | null; flexpedia_first_name: string | null
+        flexpedia_insertion: string | null; flexpedia_last_name: string | null
+        flexpedia_gender: 'm' | 'f' | null; flexpedia_birth_date: string | null
+        flexpedia_street: string | null; flexpedia_street_number: string | null
+        flexpedia_street_number_addition: string | null; flexpedia_post_code: string | null
+        flexpedia_city: string | null; flexpedia_phone: string | null
+        flexpedia_phone_country: string | null; flexpedia_mobile: string | null
+        flexpedia_email: string | null; flexpedia_residence_country: string | null
+        flexpedia_nationality: string | null
+        dismissed_at: string | null
+      }>(`SELECT id, full_name, preferred_site, rating, cc, notes,
+        fixed_course_days, recommend, is_active, is_fired, flexpedia_id,
+        flexpedia_initials, flexpedia_first_name, flexpedia_insertion, flexpedia_last_name,
+        flexpedia_gender, flexpedia_birth_date::text, flexpedia_street, flexpedia_street_number,
+        flexpedia_street_number_addition, flexpedia_post_code, flexpedia_city, flexpedia_phone,
+        flexpedia_phone_country, flexpedia_mobile, flexpedia_email, flexpedia_residence_country,
+        flexpedia_nationality, dismissed_at::text FROM worker ORDER BY id`),
       db.query<{ vacancy_id: number; slug: string; name: string; address: string }>(`
         SELECT vs.vacancy_id, s.slug, s.name, s.address FROM vacancy_site vs
         JOIN site s ON s.slug = vs.site_slug JOIN vacancy v ON v.id = vs.vacancy_id
@@ -375,13 +390,14 @@ export async function getWarehouseAppData(): Promise<WorkforceData> {
         id: number; slug: string; title: string; company_id: number; description: string
         worksite_address: string | null; latitude: number | null; longitude: number | null
         start_date: string | null; end_date: string | null; track_hours_manually: boolean
-        car_only: boolean; default_hours: string | null; project_code: string | null
+          archived_at: string | null; car_only: boolean; default_hours: string | null; project_code: string | null
         schedule_pattern: (Vacancy['schedule'] & { requiresAvailableList?: boolean }) | null
       }>(`SELECT id, slug, title, company_id, description, worksite_address,
         latitude, longitude, start_date::text AS start_date, end_date::text AS end_date,
-        track_hours_manually, car_only, default_hours::text AS default_hours, project_code, schedule_pattern
-        FROM vacancy
-        ORDER BY (slug = 'warehouse') DESC, id`),
+          track_hours_manually, archived_at::text AS archived_at, car_only,
+          default_hours::text AS default_hours, project_code, schedule_pattern
+          FROM vacancy
+          ORDER BY (slug = 'warehouse') DESC, id`),
       db.query<{ id: number; vacancy_id: number; vacancy_slug: string; kind: RequirementKind; label: string; is_required: boolean }>(`
         SELECT r.id, r.vacancy_id, v.slug AS vacancy_slug, r.kind, r.label, r.is_required
         FROM vacancy_requirement r JOIN vacancy v ON v.id = r.vacancy_id
@@ -412,6 +428,15 @@ export async function getWarehouseAppData(): Promise<WorkforceData> {
         FROM vacancy_schedule_state state
         JOIN vacancy v ON v.id = state.vacancy_id
         WHERE v.slug = 'warehouse'`),
+      db.query<{
+        id: number; vacancy_slug: string; date: string; place_id: string | null; section: string | null
+        headcount: number; start: string | null; end: string | null; note: string | null
+      }>(`
+        SELECT d.id, v.slug AS vacancy_slug, d.date::text AS date, d.site_slug AS place_id,
+          d.section, d.headcount, to_char(d.start_time, 'HH24:MI') AS start,
+          to_char(d.end_time, 'HH24:MI') AS end, d.note
+        FROM vacancy_demand d JOIN vacancy v ON v.id = d.vacancy_id
+        ORDER BY d.date, d.id`),
     ])
     const companyRows = companyResult.rows
     const companies: Company[] = companyRows.map(company => ({
@@ -442,9 +467,10 @@ export async function getWarehouseAppData(): Promise<WorkforceData> {
     }
     const workers: Worker[] = workerResult.rows.map(worker => {
       const parts = worker.full_name.trim().split(/\s+/)
-      const firstName = parts[0] ?? ''
-      const lastName = parts.length > 1 ? parts[parts.length - 1] : ''
-      const insertion = parts.length > 2 ? parts.slice(1, -1).join(' ') : null
+      const firstName = worker.flexpedia_first_name ?? parts[0] ?? ''
+      const lastName = worker.flexpedia_last_name ?? (parts.length > 1 ? parts[parts.length - 1] : '')
+      const insertion = worker.flexpedia_insertion ?? (worker.flexpedia_id !== null
+        ? null : parts.length > 2 ? parts.slice(1, -1).join(' ') : null)
       const legacyCourseDays = (worker.fixed_course_days ?? '').split(',')
         .map(day => day.trim().slice(0, 3).toLowerCase())
         .filter((day): day is Worker['courseDays'][number] => WEEKDAYS.includes(day as Worker['courseDays'][number]))
@@ -454,24 +480,24 @@ export async function getWarehouseAppData(): Promise<WorkforceData> {
         id: String(worker.id),
         flexpediaId: worker.flexpedia_id,
         manatalCandidateId: null,
-        initials: initialsFor(worker.full_name),
+        initials: worker.flexpedia_initials ?? initialsFor(worker.full_name),
         firstName,
         insertion,
         lastName,
         fullName: worker.full_name,
-        gender: null,
-        birthDate: null,
-        street: null,
-        streetNumber: null,
-        streetNumberAddition: null,
-        postCode: null,
-        city: null,
-        residenceCountry: null,
-        nationality: null,
-        phone: worker.whatsapp_phone,
-        phoneCountry: null,
-        mobile: worker.whatsapp_phone,
-        email: '',
+        gender: worker.flexpedia_gender,
+        birthDate: worker.flexpedia_birth_date,
+        street: worker.flexpedia_street,
+        streetNumber: worker.flexpedia_street_number,
+        streetNumberAddition: worker.flexpedia_street_number_addition,
+        postCode: worker.flexpedia_post_code,
+        city: worker.flexpedia_city,
+        residenceCountry: worker.flexpedia_residence_country,
+        nationality: worker.flexpedia_nationality,
+        phone: worker.flexpedia_phone,
+        phoneCountry: worker.flexpedia_phone_country,
+        mobile: worker.flexpedia_mobile,
+        email: worker.flexpedia_email ?? '',
         lat: null,
         lon: null,
         geocodedAt: null,
@@ -480,7 +506,7 @@ export async function getWarehouseAppData(): Promise<WorkforceData> {
         hasVog: qualifications?.get('document:VOG on file') ?? null,
         courseDays,
         status: worker.is_active && !worker.is_fired ? 'active' : 'dismissed',
-        dismissedAt: null,
+        dismissedAt: worker.dismissed_at,
         companyAccess: workerCompanyAccess.get(worker.id) ?? [],
         manatalLink: 'not_found',
         cvUrl: null,
@@ -498,6 +524,7 @@ export async function getWarehouseAppData(): Promise<WorkforceData> {
       description: row.description,
       startDate: row.start_date ?? shiftResult.rows.find(shift => shift.vacancy_slug === row.slug)?.date ?? new Date().toISOString().slice(0, 10),
       endDate: row.end_date,
+      archivedAt: row.archived_at,
       trackHoursManually: row.track_hours_manually,
       schedule: pattern ?? {
         weekdays: [],
@@ -545,15 +572,31 @@ export async function getWarehouseAppData(): Promise<WorkforceData> {
       coversShiftId: null,
       note: null,
     }))
+    const demand: Demand[] = vacancyDemandResult.rows.map(slot => ({
+      id: String(slot.id),
+      vacancyId: slot.vacancy_slug,
+      date: slot.date,
+      placeId: slot.place_id,
+      section: slot.section,
+      headcount: slot.headcount,
+      start: slot.start,
+      end: slot.end,
+      note: slot.note,
+    }))
     const slotCounts = new Map<string, { vacancyId: string; date: string; placeId: string; section: string | null; headcount: number }>()
     for (const shift of shiftResult.rows) {
       const key = [shift.vacancy_slug, shift.date, shift.site_slug, shift.section ?? ''].join('\u0000')
+      const hasExplicitDemand = demand.some(slot => slot.vacancyId === shift.vacancy_slug
+        && slot.date === shift.date
+        && (slot.placeId === null || slot.placeId === shift.site_slug)
+        && (slot.section === null || slot.section === shift.section))
+      if (hasExplicitDemand) continue
       const slot = slotCounts.get(key)
       if (slot) slot.headcount += 1
       else slotCounts.set(key, { vacancyId: shift.vacancy_slug, date: shift.date, placeId: shift.site_slug, section: shift.section, headcount: 1 })
     }
-    const demand: Demand[] = [...slotCounts.values()].map((slot, index) => ({
-      id: `warehouse-slot-${index}`,
+    demand.push(...[...slotCounts.values()].map((slot, index) => ({
+      id: `derived-${slot.vacancyId}-${slot.date}-${index}`,
       vacancyId: slot.vacancyId,
       date: slot.date,
       placeId: slot.placeId,
@@ -562,7 +605,7 @@ export async function getWarehouseAppData(): Promise<WorkforceData> {
       start: null,
       end: null,
       note: null,
-    }))
+    })))
     const leaves: Leave[] = []
     for (const absence of absenceResult.rows) {
       for (let date = absence.start_date; date <= absence.end_date; date = addDays(date, 1)) {

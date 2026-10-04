@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ImagePlus, LoaderCircle, Trash2 } from 'lucide-react'
+import { useLanguage } from '@/lib/i18n'
 
 type WorkdayPhoto = { id: string; content_type: string; byte_size: number; created_at: string }
 
@@ -12,6 +13,7 @@ function responseError(value: unknown, fallback: string) {
 }
 
 export function WorkdayReport({ vacancyId, date }: { vacancyId: string; date: string }) {
+  const { t } = useLanguage()
   const [open, setOpen] = useState(false)
   const [photos, setPhotos] = useState<WorkdayPhoto[]>([])
   const [loading, setLoading] = useState(false)
@@ -88,24 +90,24 @@ export function WorkdayReport({ vacancyId, date }: { vacancyId: string; date: st
   }
 
   return (
-    <section className="workday-report" aria-label={`Workday report for ${date}`}>
+    <section className="workday-report" aria-label={`${t('Workday report')} for ${date}`}>
       <div className="workday-report-head">
         <div>
-          <strong>Daily work report</strong>
-          <span>{photos.length ? `${photos.length} ${photos.length === 1 ? 'photo' : 'photos'}` : 'Photos stay out of the shared schedule'}</span>
+          <strong>{t('Daily work report')}</strong>
+          <span>{photos.length ? `${photos.length} ${t(photos.length === 1 ? 'photo' : 'photos')}` : t('Photos stay out of the shared schedule')}</span>
         </div>
         <button className="button button-secondary button-small" type="button" aria-expanded={open}
           onClick={() => setOpen(value => !value)}>
-          <ImagePlus />{open ? 'Close report' : 'Add photos'}
+          <ImagePlus />{open ? t('Close report') : t('Add photos')}
         </button>
       </div>
       {open && <div className="workday-report-body">
-        <p>Attach photos from this workday. They are private and do not appear in Share view.</p>
+        <p>{t('Attach photos from this workday. They are private and do not appear in Share view.')}</p>
         <input ref={inputRef} className="workday-photo-input" type="file"
           accept="image/jpeg,image/png,image/webp" capture="environment" multiple
-          aria-label={`Choose photos for ${date}`} disabled={uploading}
+          aria-label={`${t('Choose photos for')} ${date}`} disabled={uploading}
           onChange={event => { void upload(Array.from(event.currentTarget.files ?? [])) }} />
-        {loading && <p className="workday-report-status"><LoaderCircle className="spin" />Loading photos…</p>}
+        {loading && <p className="workday-report-status"><LoaderCircle className="spin" />{t('Loading photos…')}</p>}
         {error && <p className="workday-report-error" role="alert">{error}</p>}
         {!loading && photos.length > 0 && <div className="workday-photo-grid">
           {photos.map(photo => <figure key={photo.id} className="workday-photo">
@@ -114,12 +116,12 @@ export function WorkdayReport({ vacancyId, date }: { vacancyId: string; date: st
             </a>
             <figcaption>
               <span>{new Date(photo.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</span>
-              <button className="icon-button" type="button" aria-label="Delete photo" disabled={uploading}
+              <button className="icon-button" type="button" aria-label={t('Delete photo')} disabled={uploading}
                 onClick={() => void removePhoto(photo.id)}><Trash2 /></button>
             </figcaption>
           </figure>)}
         </div>}
-        {uploading && <p className="workday-report-status"><LoaderCircle className="spin" />Saving photos…</p>}
+        {uploading && <p className="workday-report-status"><LoaderCircle className="spin" />{t('Saving photos…')}</p>}
       </div>}
     </section>
   )

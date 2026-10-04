@@ -1,5 +1,6 @@
 import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
+import { LanguageProvider } from '@/lib/i18n'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -35,7 +36,7 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: `try{document.documentElement.classList.add(localStorage.getItem('iaw-theme')==='light'?'theme-light':'theme-dark')}catch(e){document.documentElement.classList.add('theme-dark')}` }} />
       </head>
       <body className="antialiased">
-        {children}
+        <LanguageProvider>{children}</LanguageProvider>
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>

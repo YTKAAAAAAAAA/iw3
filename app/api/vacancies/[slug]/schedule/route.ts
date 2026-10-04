@@ -166,11 +166,15 @@ export async function PUT(request: Request, { params }: RouteContext) {
           db.query<{
             id: number; date: string; site_slug: string; section: string | null; worker_id: number | null
             actual_start: string | null; actual_end: string | null; attendance_status: string | null
-            offer_count: number; cover_count: number
+            is_extra: boolean; note: string | null; scheduled_start: string | null; scheduled_end: string | null
+            supabase_schedule_id: string | null; offer_count: number; cover_count: number
           }>(`
             SELECT sh.id, sh.date::text AS date, sh.site_slug, sh.section, sh.worker_id,
               sh.actual_start::text AS actual_start, sh.actual_end::text AS actual_end,
-                sh.attendance_status,
+                sh.attendance_status, sh.is_extra, sh.note,
+                to_char(sh.scheduled_start, 'HH24:MI') AS scheduled_start,
+                to_char(sh.scheduled_end, 'HH24:MI') AS scheduled_end,
+                sh.supabase_schedule_id::text,
                 (SELECT count(*)::int FROM shift_offer so WHERE so.shift_id = sh.id) AS offer_count,
                 (SELECT count(*)::int FROM shift covered WHERE covered.covers_shift_id = sh.id) AS cover_count
               FROM shift sh
@@ -200,12 +204,23 @@ export async function PUT(request: Request, { params }: RouteContext) {
         }
 
         const existingRoster = new Map(ownedRoster.rows.map(row => [row.id, row]))
+        const sourceRowsChangedByHand = new Set<number>()
         const workerIds = new Set<string>()
         const workersNeedingAccess = new Set<string>()
         for (const row of input.roster) {
           if (!row.workerId) continue
           workerIds.add(row.workerId)
           const current = isStoredId(row.id) ? existingRoster.get(Number(row.id)) : undefined
+          if (current?.supabase_schedule_id && (
+            current.date !== row.date
+            || current.site_slug !== row.placeId
+            || (current.section ?? null) !== row.section
+            || current.worker_id !== (row.workerId === null ? null : Number(row.workerId))
+            || current.is_extra !== row.extra
+            || current.note !== row.note
+            || current.scheduled_start !== row.start
+            || current.scheduled_end !== row.end
+          )) sourceRowsChangedByHand.add(current.id)
           if (!current || current.worker_id !== Number(row.workerId) || current.date !== row.date
             || current.site_slug !== row.placeId || (current.section ?? null) !== row.section) {
             workersNeedingAccess.add(row.workerId)
@@ -298,7 +313,8 @@ export async function PUT(request: Request, { params }: RouteContext) {
           removedSnapshots.push({ id: row.id, date: row.date, site_slug: row.site_slug, section: row.section, worker_id: row.worker_id })
           await db.query(`
             UPDATE shift
-            SET worker_id = NULL, confirmation_status = 'cancelled'
+            SET worker_id = NULL, confirmation_status = 'cancelled',
+              supabase_sync_locked = supabase_sync_locked OR supabase_schedule_id IS NOT NULL
             WHERE id = $1 AND vacancy_id = $2
           `, [row.id, vacancyId])
           cancelled.push(row.id)
@@ -309,7 +325,8 @@ export async function PUT(request: Request, { params }: RouteContext) {
           if (row.offer_count > 0 || row.cover_count > 0) {
             await db.query(`
               UPDATE shift
-              SET worker_id = NULL, confirmation_status = 'cancelled'
+              SET worker_id = NULL, confirmation_status = 'cancelled',
+                supabase_sync_locked = supabase_sync_locked OR supabase_schedule_id IS NOT NULL
               WHERE id = $1 AND vacancy_id = $2
             `, [row.id, vacancyId])
             cancelled.push(row.id)
@@ -391,9 +408,13 @@ export async function PUT(request: Request, { params }: RouteContext) {
                 is_extra = $7, note = $8,
                 scheduled_start = $9::time,
                 scheduled_end = $10::time,
-                schedule_position = $11
+                schedule_position = $11,
+                supabase_sync_locked = supabase_sync_locked OR $12
               WHERE vacancy_id = $1 AND id = $2
-            `, [vacancyId, Number(row.id), ...values, positions.get(row.id)])
+            `, [
+              vacancyId, Number(row.id), ...values, positions.get(row.id),
+              sourceRowsChangedByHand.has(Number(row.id)),
+            ])
             mappings.roster[row.id] = row.id
           } else {
             const created = await db.query<{ id: number }>(`

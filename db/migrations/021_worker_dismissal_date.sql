@@ -1,0 +1,2 @@
+ALTER TABLE worker
+  ADD COLUMN IF NOT EXISTS dismissed_at DATE;

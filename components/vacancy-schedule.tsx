@@ -11,6 +11,7 @@ import { assessRequirements } from '@/lib/requirement-fit'
 import { addDays, formatDate, isoWeek, weekDates, weekdayLabel, weekdayOf, WEEKDAYS, TODAY } from '@/lib/types'
 import type { Demand, Offer, RosterEntry, StandingAssignment, Vacancy, Weekday, Worker } from '@/lib/types'
 import { WorkdayReport } from './workday-report'
+import { useLanguage } from '@/lib/i18n'
 
 type View = 'day' | 'week' | 'month'
 type SavedSchedule = {
@@ -96,6 +97,7 @@ function assessWorkerRequirements(vacancy: Vacancy, worker: Worker) {
 
 export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
   const { demand: seedDemand, leaves, offers: seedOffers, roster: seedRoster, standing: seedStanding, vacancies, workers, candidateVisibility: seedVisibility } = useWorkforceData()
+  const { t, locale } = useLanguage()
   const [view, setView] = useState<View>(vacancy.schedule.horizon)
   const storageKey = `iaw-schedule-date:${vacancy.id}`
   const [anchor, setAnchor] = useState(TODAY)
@@ -481,11 +483,11 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
           schedule: set it up once and the days look after themselves. */}
       <div className="standing-panel">
         <div className="standing-head">
-          <h3>Who normally works here</h3>
+          <h3>{t('Who normally works here')}</h3>
           <div className="standing-actions">
-            <button className="button button-secondary" onClick={() => setAddingPerson(true)}><Plus />Add person</button>
+            <button className="button button-secondary" onClick={() => setAddingPerson(true)}><Plus />{t('Add person')}</button>
             <button className="button button-secondary" onClick={() => { fillFromArrangements(); setSchedule(true) }}
-              title="Create the shifts these arrangements imply, for the days on screen"><Wand2 />Fill schedule</button>
+              title={t('Create shifts from these arrangements for the days shown')}><Wand2 />{t('Create shifts for these days')}</button>
           </div>
         </div>
         {!liveArrangements.length && <p className="sched-empty">Nobody is standing on this vacancy — people are added to individual days below.</p>}
@@ -518,8 +520,8 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
 
       <button className={`sched-toggle ${schedule ? 'open' : ''}`} onClick={() => setSchedule(x => !x)} aria-expanded={schedule}>
         <ChevronRight />
-        <strong>Schedule</strong>
-        <span>{schedule ? 'Hide the day-by-day plan' : `Day-by-day plan · ${mine(plan).filter(x => x.workerId).length} shifts placed`}</span>
+        <strong>{t('Schedule')}</strong>
+        <span>{schedule ? t('Hide the day-by-day plan') : t('Day-by-day plan · {count} shifts placed', { count: mine(plan).filter(x => x.workerId).length })}</span>
       </button>
 
       {schedule && <>
@@ -536,11 +538,11 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
           <span className="week-label">
             {view === 'day' ? formatDate(anchor)
               : view === 'week' ? `Week ${week.week} · ${formatDate(days[0])} – ${formatDate(days[6])}`
-              : new Date(`${anchor}T12:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
+              : new Date(`${anchor}T12:00:00Z`).toLocaleDateString(locale === 'nl' ? 'nl-NL' : 'en-GB', { month: 'long', year: 'numeric' })}
           </span>
           <button className="icon-button" onClick={() => step(1)} aria-label="Forward"><ChevronRight /></button>
         </div>
-        <button className="button button-secondary" onClick={() => setSharing(true)}><Share2 />Share view</button>
+        <button className="button button-secondary" onClick={() => setSharing(true)}><Share2 />{t('Share view')}</button>
       </div>
       {dateStorageError && <p className="dialog-note schedule-storage-note" role="status">The selected date may not persist in this browser: {dateStorageError}</p>}
 
@@ -556,11 +558,11 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
                 <div className="sched-day-head">
                   <div><strong>{weekdayLabel[weekdayOf(date)]}</strong><span>{formatDate(date)}</span></div>
                   <div className="sched-day-actions">
-                    {vacancy.requiresAvailableList && <button className="button button-secondary button-small" onClick={() => setAvailableListDate(date)}><Users />Available people</button>}
-                    <button className="add-shift" onClick={() => setDraft({ date })}><Plus />Add slot</button>
+                    {vacancy.requiresAvailableList && <button className="button button-secondary button-small" onClick={() => setAvailableListDate(date)}><Users />{t('Available people')}</button>}
+                    <button className="add-shift" onClick={() => setDraft({ date })}><Plus />{t('Add slot')}</button>
                   </div>
                 </div>
-                {!slots.length && !quiet && <p className="sched-empty">Not a working day.</p>}
+                {!slots.length && !quiet && <p className="sched-empty">{t('Not a working day.')}</p>}
                 {slots.map(row => {
                   const shifts = shiftsIn(row)
                   const counted = shifts.filter(s => !s.extra)
@@ -581,9 +583,9 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
                           </span>
                         )}
                         <span className="headcount">
-                          <input type="number" min={0} value={row.headcount} aria-label="People ordered"
+                          <input type="number" min={0} value={row.headcount} aria-label={t('People ordered')}
                             onChange={e => patchSlot(row.id, { headcount: Math.max(0, Number(e.target.value) || 0) })} />
-                          <small>ordered</small>
+                          <small>{t('ordered')}</small>
                         </span>
                         <Badge tone={counted.length < row.headcount ? 'urgent' : 'green'}>{counted.length}/{row.headcount}</Badge>
                         <button className="planner-clear" onClick={() => dropSlot(row.id)} aria-label="Remove slot">×</button>
@@ -815,6 +817,7 @@ function CandidateList({ vacancy, row, plan, offerFor, visibility, setVisibility
 function AvailablePeopleImage({ vacancy, date, plan, visibility, onClose }: {
   vacancy: Vacancy; date: string; plan: RosterEntry[]; visibility: CandidateVisibility[]; onClose: () => void
 }) {
+  const { t } = useLanguage()
   const { closing, close: dismiss } = useExit(onClose)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [imageError, setImageError] = useState('')
@@ -896,7 +899,7 @@ function AvailablePeopleImage({ vacancy, date, plan, visibility, onClose }: {
     <div className={`dialog-backdrop ${closing ? 'closing' : ''}`} onClick={dismiss}>
       <div className="dialog dialog-wide available-people-dialog" onClick={event => event.stopPropagation()}>
         <div className="panel-header">
-          <div><h2>Available people</h2><p>{formatDate(date)} · {people.length} people, numbered for the client</p></div>
+          <div><h2>{t('Available people')}</h2><p>{formatDate(date)} · {t('{count} people, numbered for the client', { count: people.length })}</p></div>
           <button className="icon-button" onClick={dismiss} aria-label="Close"><X /></button>
         </div>
         <div className="available-image-preview"><canvas ref={canvasRef} aria-label={`Numbered available people for ${formatDate(date)}`} /></div>
