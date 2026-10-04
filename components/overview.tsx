@@ -70,7 +70,9 @@ export function Overview() {
           <Metric
             label={t('Open vacancies')}
             value={open.length}
-            caption={t('{count} vacancies in total', { count: vacancies.length })}
+            caption={t(vacancies.length === 1 ? '1 vacancy in total' : '{count} vacancies in total', {
+              count: vacancies.length,
+            })}
             href="/vacancies"
           />
           <Metric

@@ -628,6 +628,15 @@ const dutch: Record<string, string> = {
   '— nobody yet —': '— nog niemand —',
   'Everything fits one screenshot — the preview will not crop the last name. * = beyond the client order.':
     'Alles past op één schermafbeelding — de voorvertoning snijdt de laatste naam niet af. * = buiten de bestelling van de klant.',
+  '1 vacancy in total': '1 vacature in totaal',
+  // Common absence reasons arriving from Supabase and the calendar.
+  'Days off': 'Vrije dagen',
+  'Day off': 'Vrije dag',
+  'Vacation': 'Vakantie',
+  'Holiday': 'Vakantie',
+  'Sick': 'Ziek',
+  'Sick leave': 'Ziekteverlof',
+  'Personal': 'Persoonlijk',
 }
 
 type LanguageContextValue = {

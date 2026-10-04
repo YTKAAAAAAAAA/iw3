@@ -4801,3 +4801,20 @@ body,
 .sync-button.sync-failing {
   color: var(--tone-danger-ink);
 }
+
+/* The People-nearby list note shares the panel's inner edge. */
+.distance-list .map-note {
+  padding: 12px 20px;
+}
+/* Icon rail (641–900px): the language switch stacks under the icons instead of
+   overflowing the 64px rail; the overlay menu below 640px shows it in full. */
+@media (min-width: 641px) and (max-width: 900px) {
+  .sidebar .locale-switch {
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  .sidebar .locale-switch > span {
+    display: none;
+  }
+}
