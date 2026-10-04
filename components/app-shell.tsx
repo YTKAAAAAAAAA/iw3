@@ -102,7 +102,9 @@ export function PageHeading({
    subscribes to it.
    ------------------------------------------------------------------ */
 type Theme = 'dark' | 'light'
-const THEME_KEY = 'iaw-theme'
+const THEME_KEY = 'iatw-theme'
+/** The key used before the I@W rename; read once so nobody loses their choice. */
+const LEGACY_THEME_KEY = 'iaw-theme'
 let themeValue: Theme = 'dark'
 const themeSubscribers = new Set<(theme: Theme) => void>()
 const publishTheme = (next: Theme) => {
@@ -136,7 +138,7 @@ function useThemeSetting() {
        hydration mismatch. */
     let stored: string | null = null
     try {
-      stored = window.localStorage.getItem(THEME_KEY)
+      stored = window.localStorage.getItem(THEME_KEY) ?? window.localStorage.getItem(LEGACY_THEME_KEY)
     } catch {
       stored = null
     }
@@ -156,7 +158,7 @@ function useThemeSetting() {
     const adopt = () => {
       let saved: string | null = null
       try {
-        saved = window.localStorage.getItem(THEME_KEY)
+        saved = window.localStorage.getItem(THEME_KEY) ?? window.localStorage.getItem(LEGACY_THEME_KEY)
       } catch {
         saved = null
       }

@@ -5,7 +5,7 @@ import { withDb } from '@/lib/db'
 
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7
 const DEVELOPMENT_SECRET = 'local-development-only-session-secret'
-export const SESSION_COOKIE = 'iaw_session'
+export const SESSION_COOKIE = 'iatw_session'
 
 function sessionSecret(): string | null {
   if (process.env.SESSION_SECRET && process.env.SESSION_SECRET.length >= 32) return process.env.SESSION_SECRET

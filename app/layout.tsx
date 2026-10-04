@@ -37,7 +37,7 @@ export default async function RootLayout({
         <script
           nonce={nonce}
           dangerouslySetInnerHTML={{
-            __html: `try{document.documentElement.classList.add(localStorage.getItem('iaw-theme')==='light'?'theme-light':'theme-dark')}catch(e){document.documentElement.classList.add('theme-dark')}`,
+            __html: `try{document.documentElement.classList.add((localStorage.getItem('iatw-theme')||localStorage.getItem('iaw-theme'))==='light'?'theme-light':'theme-dark')}catch(e){document.documentElement.classList.add('theme-dark')}`,
           }}
         />
       </head>

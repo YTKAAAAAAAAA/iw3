@@ -19,7 +19,7 @@ const PDOK_URL =
 const NOMINATIM_URL = process.env.GEOCODER_BASE_URL ?? 'https://nominatim.openstreetmap.org'
 const USER_AGENT =
   process.env.GEOCODER_USER_AGENT ??
-  'Mozilla/5.0 (compatible; IAWPlatform/1.0; +https://international-work.example)'
+  'Mozilla/5.0 (compatible; IatWPlatform/1.0; +https://international-work.example)'
 
 const validPoint = (lat: number, lon: number): Point | null =>
   Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180

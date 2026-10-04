@@ -141,7 +141,7 @@ const note = (map, key, where) => {
 
 for (const theme of THEMES) {
   const context = await browser.newContext({ viewport: { width: WIDTHS[0][0], height: WIDTHS[0][1] } })
-  await context.addInitScript(t => { try { localStorage.setItem('iaw-theme', t) } catch {} }, theme)
+  await context.addInitScript(t => { try { localStorage.setItem('iatw-theme', t) } catch {} }, theme)
   const page = await signIn(context)
   const ROUTES = [...STATIC_ROUTES, ...await detailRoutes(page)]
 

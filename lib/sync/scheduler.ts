@@ -87,7 +87,7 @@ export async function runScheduledSync(minutes = syncIntervalMinutes()): Promise
 }
 
 declare global {
-  var __iawSyncScheduler: { running: boolean } | undefined
+  var __iatwSyncScheduler: { running: boolean } | undefined
 }
 
 /** Starts the hourly sync once per server process. */
@@ -97,9 +97,9 @@ export function startSyncScheduler(): void {
     console.info('Automatic sync is off (set SYNC_INTERVAL_MINUTES to enable it).')
     return
   }
-  if (globalThis.__iawSyncScheduler) return
+  if (globalThis.__iatwSyncScheduler) return
   const state = { running: false }
-  globalThis.__iawSyncScheduler = state
+  globalThis.__iatwSyncScheduler = state
   const tick = async () => {
     if (state.running) return
     state.running = true

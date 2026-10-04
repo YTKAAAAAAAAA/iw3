@@ -15,11 +15,11 @@ import { getSession } from '@/lib/auth/guard'
  */
 const NOMINATIM = process.env.GEOCODER_BASE_URL ?? 'https://nominatim.openstreetmap.org'
 /* Nominatim wants a real contact, but it also rejects User-Agents that do not
-   look like a conventional client string: 'IAW-Platform/1.0 (+mailto:…)' is
+   look like a conventional client string: 'IatW-Platform/1.0 (+mailto:…)' is
    answered with 403, while the customary 'Mozilla/5.0 (compatible; App/1.0;
    +url)' form is accepted. Tested both. */
 const CONTACT = process.env.GEOCODER_USER_AGENT
-  ?? 'Mozilla/5.0 (compatible; IAWPlatform/1.0; +https://international-work.example)'
+  ?? 'Mozilla/5.0 (compatible; IatWPlatform/1.0; +https://international-work.example)'
 
 export async function GET(request: Request) {
   if (!await getSession()) return NextResponse.json({ error: 'Authentication required.' }, { status: 401 })

@@ -4096,7 +4096,7 @@ svg {
   --motion-exit: 150ms;
 }
 
-@keyframes iaw-fade {
+@keyframes iatw-fade {
   from {
     opacity: 0;
   }
@@ -4104,7 +4104,7 @@ svg {
     opacity: 1;
   }
 }
-@keyframes iaw-rise {
+@keyframes iatw-rise {
   from {
     opacity: 0;
     transform: translateY(6px);
@@ -4114,7 +4114,7 @@ svg {
     transform: none;
   }
 }
-@keyframes iaw-lift {
+@keyframes iatw-lift {
   from {
     opacity: 0;
     transform: translateY(10px) scale(0.985);
@@ -4124,7 +4124,7 @@ svg {
     transform: none;
   }
 }
-@keyframes iaw-pop {
+@keyframes iatw-pop {
   0% {
     transform: scale(0.86);
   }
@@ -4140,7 +4140,7 @@ svg {
    it: at the bottom of the pulse the text measured 4.45:1 against its plate,
    under the 4.5:1 floor, and the only opacity that stays above it (.85) is too
    shallow to notice. The ring draws the eye without touching the text. */
-@keyframes iaw-attention {
+@keyframes iatw-attention {
   0% {
     box-shadow: 0 0 0 0 color-mix(in srgb, var(--tone-danger-ink) 50%, transparent);
   }
@@ -4151,12 +4151,12 @@ svg {
     box-shadow: 0 0 0 0 color-mix(in srgb, var(--tone-danger-ink) 0%, transparent);
   }
 }
-@keyframes iaw-fade-out {
+@keyframes iatw-fade-out {
   to {
     opacity: 0;
   }
 }
-@keyframes iaw-sink {
+@keyframes iatw-sink {
   to {
     opacity: 0;
     transform: translateY(5px) scale(0.99);
@@ -4172,26 +4172,26 @@ svg {
    that. If the movement is ever wanted back, the dialogs have to move into a
    portal at the document root first. */
 .content-inner {
-  animation: iaw-fade var(--motion-base) var(--ease) both;
+  animation: iatw-fade var(--motion-base) var(--ease) both;
 }
 
 /* Dialogs come from where they were opened, near enough: the backdrop fades,
    the sheet rises under it. */
 .dialog-backdrop {
-  animation: iaw-fade var(--motion-fast) var(--ease) both;
+  animation: iatw-fade var(--motion-fast) var(--ease) both;
 }
 .dialog,
 .share-sheet {
-  animation: iaw-lift var(--motion-base) var(--ease) both;
+  animation: iatw-lift var(--motion-base) var(--ease) both;
 }
 /* And leaving again — faster, and easing in rather than out, because it is
    heading off screen. `useExit` keeps the node alive exactly this long. */
 .dialog-backdrop.closing {
-  animation: iaw-fade-out var(--motion-exit) var(--ease-in) both;
+  animation: iatw-fade-out var(--motion-exit) var(--ease-in) both;
 }
 .dialog-backdrop.closing .dialog,
 .dialog-backdrop.closing .share-sheet {
-  animation: iaw-sink var(--motion-exit) var(--ease-in) both;
+  animation: iatw-sink var(--motion-exit) var(--ease-in) both;
 }
 
 /* Hover and press. The press is what makes a click feel answered on a slow
@@ -4227,15 +4227,15 @@ svg {
 
 /* Picking a day should feel like picking it up. */
 .calendar-day.picked {
-  animation: iaw-pop var(--motion-fast) var(--ease);
+  animation: iatw-pop var(--motion-fast) var(--ease);
 }
 /* A name added to a slot arrives rather than blinks into place. */
 .name-chip {
-  animation: iaw-rise var(--motion-fast) var(--ease) both;
+  animation: iatw-rise var(--motion-fast) var(--ease) both;
 }
 /* An unstaffed job that has already started says so twice and then stops. */
 .vacancy-row.urgency-late .badge {
-  animation: iaw-attention 1.4s var(--ease) 2;
+  animation: iatw-attention 1.4s var(--ease) 2;
 }
 
 /* Switching theme: the colours cross-fade instead of snapping. Only the
@@ -4269,12 +4269,12 @@ body,
   .content-inner,
   .dialog,
   .share-sheet {
-    animation: iaw-fade 140ms linear both !important;
+    animation: iatw-fade 140ms linear both !important;
   }
   .dialog-backdrop.closing,
   .dialog-backdrop.closing .dialog,
   .dialog-backdrop.closing .share-sheet {
-    animation: iaw-fade-out 110ms linear both !important;
+    animation: iatw-fade-out 110ms linear both !important;
   }
 }
 

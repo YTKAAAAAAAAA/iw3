@@ -4,7 +4,9 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { preferredLocale, type Locale } from './locale'
 export type { Locale } from './locale'
 
-const STORAGE_KEY = 'iaw-locale'
+const STORAGE_KEY = 'iatw-locale'
+/** The key used before the I@W rename; read once so nobody loses their choice. */
+const LEGACY_STORAGE_KEY = 'iaw-locale'
 
 const dutch: Record<string, string> = {
   Overview: 'Overzicht',
@@ -646,7 +648,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let stored: string | null = null
     try {
-      stored = window.localStorage.getItem(STORAGE_KEY)
+      stored = window.localStorage.getItem(STORAGE_KEY) ?? window.localStorage.getItem(LEGACY_STORAGE_KEY)
     } catch {
       stored = null
     }

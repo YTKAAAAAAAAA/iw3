@@ -193,7 +193,7 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
   } = useWorkforceData()
   const { t, locale } = useLanguage()
   const [view, setView] = useState<View>(vacancy.schedule.horizon)
-  const storageKey = `iaw-schedule-date:${vacancy.id}`
+  const storageKey = `iatw-schedule-date:${vacancy.id}`
   const [anchor, setAnchor] = useState(today)
   const [restoredStorageKey, setRestoredStorageKey] = useState<string | null>(null)
   const [dateStorageError, setDateStorageError] = useState('')

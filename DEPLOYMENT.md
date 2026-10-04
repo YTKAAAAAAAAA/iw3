@@ -92,15 +92,15 @@ write anything even if the app is compromised, instead of the `postgres` user.
 In the Supabase SQL editor:
 
 ```sql
-CREATE ROLE iaw_reader LOGIN PASSWORD '<a long random password>' BYPASSRLS;
-GRANT USAGE ON SCHEMA public TO iaw_reader;
-GRANT SELECT ON public.workers, public.schedule, public.vacations TO iaw_reader;
-ALTER ROLE iaw_reader SET default_transaction_read_only = on;
+CREATE ROLE iatw_reader LOGIN PASSWORD '<a long random password>' BYPASSRLS;
+GRANT USAGE ON SCHEMA public TO iatw_reader;
+GRANT SELECT ON public.workers, public.schedule, public.vacations TO iatw_reader;
+ALTER ROLE iatw_reader SET default_transaction_read_only = on;
 ```
 
 `BYPASSRLS` is needed because those tables have row-level security; the role
 can still only read the three tables. Then use the pooler connection string
-with `iaw_reader.<project-ref>` as the user in `SUPABASE_DATABASE_URL`.
+with `iatw_reader.<project-ref>` as the user in `SUPABASE_DATABASE_URL`.
 
 The sync refuses a snapshot that would delete all, or more than half, of the
 imported shifts or absences at once, and changes nothing in that case.
