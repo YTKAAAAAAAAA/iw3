@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation'
-import { PersonView } from '@/components/workforce-views'
+import { PersonView } from '@/components/people/person-view'
 import { WorkforceDataProvider } from '@/components/workforce-data-context'
 import { requireSession } from '@/lib/auth/guard'
 import { getPageWorkforceData } from '@/lib/db/page-data'

@@ -1,5 +1,5 @@
 import { requireSession } from '@/lib/auth/guard'
-import { VacancyForm } from '@/components/workforce-views'
+import { VacancyForm } from '@/components/vacancies/vacancy-form'
 import { WorkforceDataProvider } from '@/components/workforce-data-context'
 import { getPageWorkforceData } from '@/lib/db/page-data'
 

@@ -1,4 +1,4 @@
-import { HoursView } from '@/components/workforce-views'
+import { HoursView } from '@/components/hours/hours-view'
 import { WorkforceDataProvider } from '@/components/workforce-data-context'
 import { requireSession } from '@/lib/auth/guard'
 import { getPageWorkforceData } from '@/lib/db/page-data'

@@ -1,4 +1,4 @@
-import { VacanciesView } from '@/components/workforce-views'
+import { VacanciesView } from '@/components/vacancies/vacancies-view'
 import { WorkforceDataProvider } from '@/components/workforce-data-context'
 import { requireSession } from '@/lib/auth/guard'
 import { getPageWorkforceData } from '@/lib/db/page-data'

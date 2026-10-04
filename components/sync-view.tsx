@@ -30,13 +30,18 @@ type SyncMessage = {
 }
 
 function isWarehouseSyncSummary(value: unknown): value is WarehouseSyncSummary {
-  return isRecord(value)
-    && Number.isSafeInteger(value.workersAdded) && Number.isSafeInteger(value.workersUpdated)
-    && Number.isSafeInteger(value.shiftsAdded) && Number.isSafeInteger(value.shiftsUpdated)
-    && Number.isSafeInteger(value.shiftsProtected)
-    && Number.isSafeInteger(value.shiftsDeleted)
-    && Number.isSafeInteger(value.absencesAdded) && Number.isSafeInteger(value.absencesUpdated)
-    && Number.isSafeInteger(value.absencesDeleted)
+  return (
+    isRecord(value) &&
+    Number.isSafeInteger(value.workersAdded) &&
+    Number.isSafeInteger(value.workersUpdated) &&
+    Number.isSafeInteger(value.shiftsAdded) &&
+    Number.isSafeInteger(value.shiftsUpdated) &&
+    Number.isSafeInteger(value.shiftsProtected) &&
+    Number.isSafeInteger(value.shiftsDeleted) &&
+    Number.isSafeInteger(value.absencesAdded) &&
+    Number.isSafeInteger(value.absencesUpdated) &&
+    Number.isSafeInteger(value.absencesDeleted)
+  )
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -44,43 +49,58 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isSyncStatus(value: unknown): value is WarehouseSyncStatus {
-  return isRecord(value) && typeof value.enabled === 'boolean'
-    && typeof value.configured === 'boolean'
-    && (value.lastSyncAt === null || typeof value.lastSyncAt === 'string')
-    && (value.lastError === null || typeof value.lastError === 'string')
-    && (value.lastSummary === null || isWarehouseSyncSummary(value.lastSummary))
+  return (
+    isRecord(value) &&
+    typeof value.enabled === 'boolean' &&
+    typeof value.configured === 'boolean' &&
+    (value.lastSyncAt === null || typeof value.lastSyncAt === 'string') &&
+    (value.lastError === null || typeof value.lastError === 'string') &&
+    (value.lastSummary === null || isWarehouseSyncSummary(value.lastSummary))
+  )
 }
 
 function isFlexpediaResult(value: unknown): value is FlexpediaTestResult {
-  return isRecord(value) && Number.isSafeInteger(value.employees) && Number.isSafeInteger(value.pages)
-    && Number.isSafeInteger(value.matched) && Number.isSafeInteger(value.unmatched)
-    && Number.isSafeInteger(value.ambiguous) && value.writesPerformed === false
+  return (
+    isRecord(value) &&
+    Number.isSafeInteger(value.employees) &&
+    Number.isSafeInteger(value.pages) &&
+    Number.isSafeInteger(value.matched) &&
+    Number.isSafeInteger(value.unmatched) &&
+    Number.isSafeInteger(value.ambiguous) &&
+    value.writesPerformed === false
+  )
 }
 
 function isFlexpediaSyncSummary(value: unknown): value is FlexpediaSyncSummary {
-  return isRecord(value)
-    && Number.isSafeInteger(value.employeesAdded)
-    && Number.isSafeInteger(value.employeesUpdated)
+  return (
+    isRecord(value) &&
+    Number.isSafeInteger(value.employeesAdded) &&
+    Number.isSafeInteger(value.employeesUpdated)
+  )
 }
 
 function isFlexpediaSyncStatus(value: unknown): value is FlexpediaSyncStatus {
-  return isRecord(value)
-    && (value.lastSyncAt === null || typeof value.lastSyncAt === 'string')
-    && (value.lastError === null || typeof value.lastError === 'string')
-    && (value.lastSummary === null || isFlexpediaSyncSummary(value.lastSummary))
+  return (
+    isRecord(value) &&
+    (value.lastSyncAt === null || typeof value.lastSyncAt === 'string') &&
+    (value.lastError === null || typeof value.lastError === 'string') &&
+    (value.lastSummary === null || isFlexpediaSyncSummary(value.lastSummary))
+  )
 }
 
 function isFlexpediaFixturePreview(value: unknown): value is FlexpediaFixturePreviewResult {
-  return isRecord(value)
-    && Number.isSafeInteger(value.existingMatched)
-    && Number.isSafeInteger(value.existingWouldEnrich)
-    && Number.isSafeInteger(value.newWouldAdd)
-    && Number.isSafeInteger(value.existingFieldsChanged)
-    && Number.isSafeInteger(value.apiFieldsCovered)
-    && Number.isSafeInteger(value.assignedShiftsPreserved)
-    && Number.isSafeInteger(value.courseDaysPreserved)
-    && Number.isSafeInteger(value.absencesPreserved)
-    && value.writesPerformed === false
+  return (
+    isRecord(value) &&
+    Number.isSafeInteger(value.existingMatched) &&
+    Number.isSafeInteger(value.existingWouldEnrich) &&
+    Number.isSafeInteger(value.newWouldAdd) &&
+    Number.isSafeInteger(value.existingFieldsChanged) &&
+    Number.isSafeInteger(value.apiFieldsCovered) &&
+    Number.isSafeInteger(value.assignedShiftsPreserved) &&
+    Number.isSafeInteger(value.courseDaysPreserved) &&
+    Number.isSafeInteger(value.absencesPreserved) &&
+    value.writesPerformed === false
+  )
 }
 
 async function readResponse(response: Response): Promise<SyncResponse> {
@@ -129,7 +149,9 @@ export function SyncView() {
       .finally(() => {
         if (active) setLoading(false)
       })
-    return () => { active = false }
+    return () => {
+      active = false
+    }
   }, [])
 
   async function submit(action: string) {
@@ -152,8 +174,7 @@ export function SyncView() {
         return
       }
       if (action === 'sync-flexpedia') {
-        if (!isFlexpediaSyncSummary(body.flexpediaSummary)
-          || !isFlexpediaSyncStatus(body.flexpediaStatus)) {
+        if (!isFlexpediaSyncSummary(body.flexpediaSummary) || !isFlexpediaSyncStatus(body.flexpediaStatus)) {
           throw new Error('Flexpedia synchronization returned an invalid summary.')
         }
         setFlexpediaStatus(body.flexpediaStatus)
@@ -176,15 +197,18 @@ export function SyncView() {
           throw new Error('The Warehouse sync returned an invalid summary.')
         }
         setStatus(body.status)
-        setMessage({ key: 'Warehouse snapshot reconciled. Source-linked shifts and absences now match Supabase; local-only records remain.' })
+        setMessage({
+          key: 'Warehouse snapshot reconciled. Source-linked shifts and absences now match Supabase; local-only records remain.',
+        })
         return
       }
       if (!isSyncStatus(body)) throw new Error('The sync service returned an invalid status.')
       setStatus(body)
       setMessage({
-        key: action === 'enable-supabase'
-          ? 'Supabase sync enabled. Existing records were not changed.'
-          : 'Supabase sync disabled. Imported Warehouse history remains in the database.',
+        key:
+          action === 'enable-supabase'
+            ? 'Supabase sync enabled. Existing records were not changed.'
+            : 'Supabase sync disabled. Imported Warehouse history remains in the database.',
       })
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'The sync request failed.')
@@ -209,7 +233,11 @@ export function SyncView() {
           description={t('Warehouse history stays in PostgreSQL when you switch data sources.')}
         />
         {error && <StateBlock kind="error" title="Sync request failed" description={t(error)} />}
-        {message && <p role="status" className="field-hint">{t(message.key, message.values)}</p>}
+        {message && (
+          <p role="status" className="field-hint">
+            {t(message.key, message.values)}
+          </p>
+        )}
         <div className="sync-grid">
           <Panel>
             <div className="panel-header">
@@ -221,11 +249,21 @@ export function SyncView() {
                 {loading ? t('Loading') : status?.enabled ? t('Enabled') : t('Disabled')}
               </Badge>
             </div>
-            <div className="sync-meta"><span>{t('Last sync')}</span><strong>{lastSync}</strong></div>
-            {status?.lastError && <p role="status" className="field-hint">{t('Last sync error:')} {status.lastError}</p>}
+            <div className="sync-meta">
+              <span>{t('Last sync')}</span>
+              <strong>{lastSync}</strong>
+            </div>
+            {status?.lastError && (
+              <p role="status" className="field-hint">
+                {t('Last sync error:')} {status.lastError}
+              </p>
+            )}
             {status?.lastSummary && (
               <p className="field-hint">
-                {t('Last result: {workersAdded} workers added, {workersUpdated} updated; {shiftsAdded} shifts added, {shiftsUpdated} updated, {shiftsDeleted} deleted; {absencesAdded} absences added, {absencesUpdated} updated, {absencesDeleted} deleted.', status.lastSummary)}
+                {t(
+                  'Last result: {workersAdded} workers added, {workersUpdated} updated; {shiftsAdded} shifts added, {shiftsUpdated} updated, {shiftsDeleted} deleted; {absencesAdded} absences added, {absencesUpdated} updated, {absencesDeleted} deleted.',
+                  status.lastSummary,
+                )}
               </p>
             )}
             <div className="button-row">
@@ -248,10 +286,14 @@ export function SyncView() {
               </button>
             </div>
             {!status?.configured && !loading && (
-              <p className="field-hint">{t('Set SUPABASE_DATABASE_URL in .env and restart the app to enable sync.')}</p>
+              <p className="field-hint">
+                {t('Set SUPABASE_DATABASE_URL in .env and restart the app to enable sync.')}
+              </p>
             )}
             <p className="field-hint">
-              {t('Sync is a read-only Supabase snapshot. Imported shifts and absences are reconciled by source ID, including source deletions. Local-only records are not removed. When a source shift is deleted, its shift and attached offer records are deleted too.')}
+              {t(
+                'Sync is a read-only Supabase snapshot. Imported shifts and absences are reconciled by source ID, including source deletions. Local-only records are not removed. When a source shift is deleted, its shift and attached offer records are deleted too.',
+              )}
             </p>
           </Panel>
 
@@ -259,17 +301,29 @@ export function SyncView() {
             <div className="panel-header">
               <div>
                 <h2>{t('Flexpedia employee sync')}</h2>
-                <p>{t('Flexpedia updates employee profiles only. Manage employment status manually here.')}</p>
+                <p>
+                  {t('Flexpedia updates employee profiles only. Manage employment status manually here.')}
+                </p>
               </div>
               <Badge tone={flexpediaConfigured ? 'success' : 'neutral'}>
                 {flexpediaConfigured ? t('Token configured') : t('Not configured')}
               </Badge>
             </div>
-            <div className="sync-meta"><span>{t('Last sync')}</span><strong>{flexpediaLastSync}</strong></div>
-            {flexpediaStatus?.lastError && <p role="status" className="field-hint">{t('Last sync error:')} {t(flexpediaStatus.lastError)}</p>}
+            <div className="sync-meta">
+              <span>{t('Last sync')}</span>
+              <strong>{flexpediaLastSync}</strong>
+            </div>
+            {flexpediaStatus?.lastError && (
+              <p role="status" className="field-hint">
+                {t('Last sync error:')} {t(flexpediaStatus.lastError)}
+              </p>
+            )}
             {flexpediaStatus?.lastSummary && (
               <p className="field-hint">
-                {t('Last Flexpedia result: {employeesAdded} added, {employeesUpdated} profiles updated. Employment status is managed manually.', flexpediaStatus.lastSummary)}
+                {t(
+                  'Last Flexpedia result: {employeesAdded} added, {employeesUpdated} profiles updated. Employment status is managed manually.',
+                  flexpediaStatus.lastSummary,
+                )}
               </p>
             )}
             <button
@@ -291,9 +345,15 @@ export function SyncView() {
               {t('Test Flexpedia connection')}
             </button>
             {!flexpediaConfigured && (
-              <p className="field-hint">{t('Set FLEXPEDIA_API_TOKEN in .env and restart the app before testing.')}</p>
+              <p className="field-hint">
+                {t('Set FLEXPEDIA_API_TOKEN in .env and restart the app before testing.')}
+              </p>
             )}
-            <p className="field-hint">{t('Flexpedia profile fields are authoritative, including null values. Flexpedia sync never dismisses or reactivates employees. Use the People page to change employment status; shifts, absences, hours, and work history remain. New employees are added without company access until assigned locally.')}</p>
+            <p className="field-hint">
+              {t(
+                'Flexpedia profile fields are authoritative, including null values. Flexpedia sync never dismisses or reactivates employees. Use the People page to change employment status; shifts, absences, hours, and work history remain. New employees are added without company access until assigned locally.',
+              )}
+            </p>
             {flexpediaResult && (
               <p role="status" className="field-hint">
                 Read {flexpediaResult.employees} employees in {flexpediaResult.pages} pages;{' '}
@@ -307,12 +367,18 @@ export function SyncView() {
             <div className="panel-header">
               <div>
                 <h2>{t('Flexpedia — isolated merge fixture')}</h2>
-                <p>{t('One existing worker and one synthetic new employee, using all 18 documented EmployeeModel fields.')}</p>
+                <p>
+                  {t(
+                    'One existing worker and one synthetic new employee, using all 18 documented EmployeeModel fields.',
+                  )}
+                </p>
               </div>
               <Badge tone="neutral">No database writes</Badge>
             </div>
             <p className="field-hint">
-              {t('Optional fields may be null in real API responses. The preview replaces the profile from Flexpedia; shifts, course days, and absences stay unchanged.')}
+              {t(
+                'Optional fields may be null in real API responses. The preview replaces the profile from Flexpedia; shifts, course days, and absences stay unchanged.',
+              )}
             </p>
             <button
               className="button button-secondary"
@@ -325,11 +391,12 @@ export function SyncView() {
             </button>
             {fixturePreview && (
               <p role="status" className="field-hint">
-                {fixturePreview.existingMatched} existing worker matched; {fixturePreview.existingWouldEnrich} would be
-                updated ({fixturePreview.existingFieldsChanged} profile fields changed); {fixturePreview.newWouldAdd} new
-                demo worker would be added. Preserved: {fixturePreview.assignedShiftsPreserved} shifts,{' '}
-                {fixturePreview.courseDaysPreserved} course days, {fixturePreview.absencesPreserved} absence periods.
-                Covered {fixturePreview.apiFieldsCovered} schema fields. No records were written.
+                {fixturePreview.existingMatched} existing worker matched; {fixturePreview.existingWouldEnrich}{' '}
+                would be updated ({fixturePreview.existingFieldsChanged} profile fields changed);{' '}
+                {fixturePreview.newWouldAdd} new demo worker would be added. Preserved:{' '}
+                {fixturePreview.assignedShiftsPreserved} shifts, {fixturePreview.courseDaysPreserved} course
+                days, {fixturePreview.absencesPreserved} absence periods. Covered{' '}
+                {fixturePreview.apiFieldsCovered} schema fields. No records were written.
               </p>
             )}
           </Panel>
@@ -344,7 +411,9 @@ export function SyncView() {
             <Badge tone="neutral">{workers.length} workers</Badge>
           </div>
           <p className="field-hint">
-            {t('Turning off Supabase only stops future imports. It does not clear Warehouse records already imported. Flexpedia sync updates employee profiles; employment status is managed manually, while shift schedules, absence history, and manually entered hours remain in the local database.')}
+            {t(
+              'Turning off Supabase only stops future imports. It does not clear Warehouse records already imported. Flexpedia sync updates employee profiles; employment status is managed manually, while shift schedules, absence history, and manually entered hours remain in the local database.',
+            )}
           </p>
         </Panel>
       </div>

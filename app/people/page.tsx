@@ -1,5 +1,5 @@
 import { Suspense } from 'react'
-import { PeopleView } from '@/components/workforce-views'
+import { PeopleView } from '@/components/people/people-view'
 import { WorkforceDataProvider } from '@/components/workforce-data-context'
 import { requireSession } from '@/lib/auth/guard'
 import { getPageWorkforceData } from '@/lib/db/page-data'

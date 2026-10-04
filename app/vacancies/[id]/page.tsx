@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation'
-import { VacancyView } from '@/components/workforce-views'
+import { VacancyView } from '@/components/vacancies/vacancy-view'
 import { WorkforceDataProvider } from '@/components/workforce-data-context'
 import { requireSession } from '@/lib/auth/guard'
 import { getPageWorkforceData } from '@/lib/db/page-data'

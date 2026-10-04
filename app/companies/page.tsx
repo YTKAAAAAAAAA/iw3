@@ -1,4 +1,4 @@
-import { CompaniesView } from '@/components/workforce-views'
+import { CompaniesView } from '@/components/companies-view'
 import { WorkforceDataProvider } from '@/components/workforce-data-context'
 import { requireSession } from '@/lib/auth/guard'
 import { getPageWorkforceData } from '@/lib/db/page-data'
