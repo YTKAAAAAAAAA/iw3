@@ -4,16 +4,18 @@ import { Badge, Panel } from '@/components/app-shell'
 import { useWorkforceData } from '@/components/workforce-data-context'
 import { assignmentOn } from '@/lib/derive'
 import type { Leave } from '@/lib/types'
-import { addDays, formatDate, TODAY } from '@/lib/types'
+import { addDays, formatDate } from '@/lib/types'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useState } from 'react'
+import { useToday } from '@/lib/today'
 
 export function Calendar({ workerId }: { workerId: string }) {
+  const today = useToday()
   const { leaves, roster, vacancies } = useWorkforceData()
-  const [view, setView] = useState({ y: Number(TODAY.slice(0, 4)), m: Number(TODAY.slice(5, 7)) - 1 })
-  const [picked, setPicked] = useState<string[]>([TODAY])
+  const [view, setView] = useState({ y: Number(today.slice(0, 4)), m: Number(today.slice(5, 7)) - 1 })
+  const [picked, setPicked] = useState<string[]>([today])
   /* The anchor is the last day touched, which is what shift-click measures from. */
-  const [anchor, setAnchor] = useState<string>(TODAY)
+  const [anchor, setAnchor] = useState<string>(today)
   const [entries, setEntries] = useState<Leave[]>(leaves)
   const [reason, setReason] = useState('')
   const [paid, setPaid] = useState(true)
@@ -58,12 +60,12 @@ export function Calendar({ workerId }: { workerId: string }) {
   /* Three reasons a picked day cannot take a day off, each worth naming: it
      has already gone, somebody is expecting this person on a job, or it is
      already a day off. */
-  const pastDays = chosen.filter(d => d < TODAY)
+  const pastDays = chosen.filter(d => d < today)
   const assigned = chosen.filter(
-    d => d >= TODAY && !leaveOn(d) && assignmentOn(workerId, d, null, roster, vacancies),
+    d => d >= today && !leaveOn(d) && assignmentOn(workerId, d, null, roster, vacancies),
   )
-  const markable = chosen.filter(d => d >= TODAY && dayState(d) === 'free')
-  const removable = chosen.filter(d => d >= TODAY && leaveOn(d))
+  const markable = chosen.filter(d => d >= today && dayState(d) === 'free')
+  const removable = chosen.filter(d => d >= today && leaveOn(d))
 
   const markOff = async () => {
     if (savingAbsence || !markable.length) return
@@ -162,7 +164,7 @@ export function Calendar({ workerId }: { workerId: string }) {
               key={date}
               onClick={e => choose(date, e.shiftKey)}
               aria-pressed={picked.includes(date)}
-              className={`calendar-day ${date.slice(0, 7) !== monthKey ? 'muted' : ''} ${date === TODAY ? 'today' : ''} ${picked.includes(date) ? 'picked' : ''} ${state}`}
+              className={`calendar-day ${date.slice(0, 7) !== monthKey ? 'muted' : ''} ${date === today ? 'today' : ''} ${picked.includes(date) ? 'picked' : ''} ${state}`}
             >
               <span>{Number(date.slice(-2))}</span>
               {state !== 'free' && <i />}
@@ -197,9 +199,9 @@ export function Calendar({ workerId }: { workerId: string }) {
             <h2>{single ? formatDate(single) : `${chosen.length} days selected`}</h2>
             <p>
               {single
-                ? single === TODAY
+                ? single === today
                   ? 'Today'
-                  : single < TODAY
+                  : single < today
                     ? 'Past day'
                     : 'Future day'
                 : chosen.length

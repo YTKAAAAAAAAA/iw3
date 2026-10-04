@@ -8,7 +8,8 @@
     "start": "next start",
     "test": "node --test --experimental-strip-types lib/*.test.ts lib/sync/*.test.ts",
     "audit": "node scripts/audit.mjs",
-    "db:migrate": "node scripts/migrate.mjs"
+    "db:migrate": "node scripts/migrate.mjs",
+    "admin:reset-password": "node scripts/reset-admin-password.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",

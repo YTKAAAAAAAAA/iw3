@@ -5,19 +5,20 @@ import { ReportDialog } from '@/components/hours/report-dialog'
 import { useWorkforceData } from '@/components/workforce-data-context'
 import { assignmentOn, dayStatus, vacancyStatus } from '@/lib/derive'
 import type { HoursEntry } from '@/lib/types'
-import { TODAY } from '@/lib/types'
 import { FileText } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
+import { useToday } from '@/lib/today'
 
 export function HoursView() {
+  const today = useToday()
   const { vacancies, standing, roster, hours, workers, leaves, companies } = useWorkforceData()
   const trackableVacancies = vacancies.filter(
-    x => x.trackHoursManually && vacancyStatus(x, standing, roster, TODAY) !== 'archived',
+    x => x.trackHoursManually && vacancyStatus(x, standing, roster, today) !== 'archived',
   )
   const router = useRouter()
-  const [date, setDate] = useState(TODAY)
+  const [date, setDate] = useState(today)
   const [vacancyId, setVacancyId] = useState(trackableVacancies[0]?.id ?? vacancies[0].id)
   /* Entries are keyed by person AND vacancy AND day. The previous version kept
    one value per person, so hours typed on Monday reappeared on Tuesday. */

@@ -190,7 +190,6 @@ export function todayInAmsterdam(now = new Date()): ISODate {
   const values = Object.fromEntries(parts.map(part => [part.type, part.value]))
   return `${values.year}-${values.month}-${values.day}`
 }
-export const TODAY: ISODate = todayInAmsterdam()
 export const ACTIVE_STATUSES = ['active'] as const
 export const WORKER_TONES = ['blue','green','orange','purple','teal'] as const
 export type RoadDistance = { km:number; minutes:number }

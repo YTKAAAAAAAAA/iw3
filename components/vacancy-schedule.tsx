@@ -8,10 +8,11 @@ import type { CandidateVisibility } from './workforce-data-context'
 import { alreadyOnVacancy, assignmentOn, availabilityLabel, availabilityOver, blockOn, endFor, isCourseDay, shiftsOverlap, slotTimeLabel, startFor, timingOf } from '@/lib/derive'
 import { travelFor } from '@/lib/travel'
 import { assessRequirements } from '@/lib/requirement-fit'
-import { addDays, formatDate, isoWeek, weekDates, weekdayLabel, weekdayOf, WEEKDAYS, TODAY } from '@/lib/types'
+import { addDays, formatDate, isoWeek, weekDates, weekdayLabel, weekdayOf, WEEKDAYS } from '@/lib/types'
 import type { Demand, Offer, RosterEntry, StandingAssignment, Vacancy, Weekday, Worker } from '@/lib/types'
 import { WorkdayReport } from './workday-report'
 import { useLanguage } from '@/lib/i18n'
+import { useToday } from '@/lib/today'
 
 type View = 'day' | 'week' | 'month'
 type SavedSchedule = {
@@ -96,11 +97,12 @@ function assessWorkerRequirements(vacancy: Vacancy, worker: Worker) {
 }
 
 export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
+  const today = useToday()
   const { demand: seedDemand, leaves, offers: seedOffers, roster: seedRoster, standing: seedStanding, vacancies, workers, candidateVisibility: seedVisibility } = useWorkforceData()
   const { t, locale } = useLanguage()
   const [view, setView] = useState<View>(vacancy.schedule.horizon)
   const storageKey = `iaw-schedule-date:${vacancy.id}`
-  const [anchor, setAnchor] = useState(TODAY)
+  const [anchor, setAnchor] = useState(today)
   const [restoredStorageKey, setRestoredStorageKey] = useState<string | null>(null)
   const [dateStorageError, setDateStorageError] = useState('')
   const changeView = (next: View) => setView(next)
@@ -328,7 +330,7 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
   const slotsOn = (date: string) => mine(rows).filter(r => r.date === date)
     .sort((a, b) => (a.start ?? '').localeCompare(b.start ?? '') || slotTitle(vacancy, a).localeCompare(slotTitle(vacancy, b)))
   const shiftsIn = (row: Demand) => mine(plan).filter(s => s.date === row.date && sameSlot(s, row))
-  const liveArrangements = arrangements.filter(a => a.vacancyId === vacancy.id && (!a.to || a.to >= TODAY))
+  const liveArrangements = arrangements.filter(a => a.vacancyId === vacancy.id && (!a.to || a.to >= today))
 
   /* Turning arrangements into shifts for the days on screen. Anything already
      there is left alone — generating must never overwrite a decision. */
@@ -506,7 +508,7 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
               </span>
               <button className="button button-secondary button-small" onClick={() => setReplacing(a)}><Repeat />Replace</button>
               <button className="button button-secondary button-small"
-                onClick={() => setArrangements(cur => cur.map(x => x.id === a.id ? { ...x, to: TODAY } : x))}>End</button>
+                onClick={() => setArrangements(cur => cur.map(x => x.id === a.id ? { ...x, to: today } : x))}>End</button>
             </div>
           )
         })}
@@ -554,7 +556,7 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
                working days stay readable, while still being orderable. */
             const quiet = view === 'month' && !slots.length
             return (
-              <Panel key={date} className={`sched-day ${date === TODAY ? 'today' : ''} ${quiet ? 'quiet' : ''}`}>
+              <Panel key={date} className={`sched-day ${date === today ? 'today' : ''} ${quiet ? 'quiet' : ''}`}>
                 <div className="sched-day-head">
                   <div><strong>{weekdayLabel[weekdayOf(date)]}</strong><span>{formatDate(date)}</span></div>
                   <div className="sched-day-actions">
@@ -917,11 +919,12 @@ function ReplaceDialog({ vacancy, arrangement, plan, onCancel, onSave }: {
   vacancy: Vacancy; arrangement: StandingAssignment; plan: RosterEntry[]
   onCancel: () => void; onSave: (incoming: string, from: string, to: string, reason: string) => void
 }) {
+  const today = useToday()
   const { leaves, workers } = useWorkforceData()
   const { closing, close: dismiss } = useExit(onCancel)
   const outgoing = workers.find(w => w.id === arrangement.workerId)
-  const [from, setFrom] = useState(TODAY)
-  const [to, setTo] = useState(TODAY)
+  const [from, setFrom] = useState(today)
+  const [to, setTo] = useState(today)
   const [reason, setReason] = useState('')
   const [pick, setPick] = useState<string | null>(null)
   const [carOnly, setCarOnly] = useState(false)
@@ -1004,6 +1007,7 @@ const HORIZON_DAYS = 28
 function PersonDialog({ vacancy, plan, onCancel, onSave }: {
   vacancy: Vacancy; plan: RosterEntry[]; onCancel: () => void; onSave: (a: StandingAssignment) => void
 }) {
+  const today = useToday()
   const { leaves, workers } = useWorkforceData()
   const { closing, close: dismiss } = useExit(onCancel)
   const [workerId, setWorkerId] = useState('')
@@ -1017,7 +1021,7 @@ function PersonDialog({ vacancy, plan, onCancel, onSave }: {
      the vacancy's own period, out to the horizon. Availability is judged
      against these and nothing else — being busy on a Sunday is irrelevant to
      an arrangement that never works Sundays. */
-  const startFromDate = vacancy.startDate > TODAY ? vacancy.startDate : TODAY
+  const startFromDate = vacancy.startDate > today ? vacancy.startDate : today
   const days = useMemo(() => {
     const last = vacancy.endDate && vacancy.endDate < addDays(startFromDate, HORIZON_DAYS)
       ? vacancy.endDate : addDays(startFromDate, HORIZON_DAYS)
@@ -1090,7 +1094,7 @@ function PersonDialog({ vacancy, plan, onCancel, onSave }: {
           <button className="button button-secondary" onClick={dismiss}>Cancel</button>
           <button className="button button-primary" disabled={!workerId || !weekdays.length}
             onClick={() => onSave({ id: `sa-${Date.now()}`, vacancyId: vacancy.id, workerId, placeId, section: section.trim() || null,
-              weekdays, start: null, end: null, from: TODAY, to: null, note: null })}>Add</button>
+              weekdays, start: null, end: null, from: today, to: null, note: null })}>Add</button>
         </div>
       </div>
     </div>

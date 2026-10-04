@@ -22,7 +22,7 @@ import {
   Users,
   X,
 } from 'lucide-react'
-import { formatDate, parseClock, TODAY } from '@/lib/types'
+import { formatDate, parseClock } from '@/lib/types'
 import type { ReactNode } from 'react'
 import { Brand } from './logo'
 import { SearchDialog } from './search-dialog'
@@ -394,4 +394,3 @@ export function AppShell({ children, title }: { children: ReactNode; title?: str
   )
 }
 export const dateLabel = (date: string) => formatDate(date)
-export { TODAY }

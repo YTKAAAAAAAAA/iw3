@@ -5,18 +5,20 @@ import { useWorkforceData } from '@/components/workforce-data-context'
 import { currentAssignment, dayStatus } from '@/lib/derive'
 import { FEATURES } from '@/lib/features'
 import { useLanguage } from '@/lib/i18n'
-import { formatDate, TODAY } from '@/lib/types'
+import { formatDate } from '@/lib/types'
 import { ArrowUpRight, CalendarDays, Filter, Search } from 'lucide-react'
 import Link from 'next/link'
 import { useState } from 'react'
+import { useToday } from '@/lib/today'
 
 export function PeopleTable({ compact = false }: { compact?: boolean }) {
+  const today = useToday()
   const { workers, companies, roster, leaves, vacancies } = useWorkforceData()
   const { t } = useLanguage()
   const [query, setQuery] = useState('')
   const [availability, setAvailability] = useState('All availability')
   const [company, setCompany] = useState('All companies')
-  const [date, setDate] = useState(TODAY)
+  const [date, setDate] = useState(today)
   const [page, setPage] = useState(1)
   const active = workers.filter(w => w.status === 'active')
   const filtered = active.filter(

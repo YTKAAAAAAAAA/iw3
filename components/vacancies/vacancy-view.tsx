@@ -9,12 +9,13 @@ import { useWorkforceData } from '@/components/workforce-data-context'
 import { describeSchedule, vacancyStatus } from '@/lib/derive'
 import { FEATURES } from '@/lib/features'
 import { useLanguage } from '@/lib/i18n'
-import { formatDate, TODAY } from '@/lib/types'
+import { formatDate } from '@/lib/types'
 import { CalendarDays, MapPin } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
+import { useToday } from '@/lib/today'
 /* Leaflet touches `window` on import and weighs more than the rest of the
    page, so the map is fetched only when asked for. Most of the time the
    kilometres next to each candidate are all anyone needs. */
@@ -24,6 +25,7 @@ const LazyMapPanel = dynamic(() => import('@/components/map-view').then(m => m.M
 })
 
 export function VacancyView({ id }: { id: string }) {
+  const today = useToday()
   const router = useRouter()
   const { vacancies, standing, roster, companies } = useWorkforceData()
   const { t } = useLanguage()
@@ -164,8 +166,8 @@ export function VacancyView({ id }: { id: string }) {
       setArchiveSaving(false)
     }
   }
-  const status = vacancyStatus(v, standing, roster, TODAY)
-  const canRestore = v.archivedAt !== null && v.archivedAt !== undefined && (!v.endDate || v.endDate >= TODAY)
+  const status = vacancyStatus(v, standing, roster, today)
+  const canRestore = v.archivedAt !== null && v.archivedAt !== undefined && (!v.endDate || v.endDate >= today)
   const ended = status === 'archived' && !canRestore
   return (
     <AppShell title="Vacancy">
@@ -237,7 +239,7 @@ export function VacancyView({ id }: { id: string }) {
               {t(archiveError)}
             </p>
           )}
-          {ended && v.endDate && v.endDate < TODAY && (
+          {ended && v.endDate && v.endDate < today && (
             <p className="field-hint">{t('This vacancy ended. Update its end date before restoring it.')}</p>
           )}
           {editing ? (

@@ -4,12 +4,13 @@ import { AppShell, Badge, PageHeading, Panel, StateBlock } from '@/components/ap
 import { useWorkforceData } from '@/components/workforce-data-context'
 import { sortByUrgency, urgencyNote, vacancyStatus, vacancyUrgency } from '@/lib/derive'
 import { useLanguage } from '@/lib/i18n'
-import { TODAY } from '@/lib/types'
 import { ArrowUpRight, Briefcase, Plus } from 'lucide-react'
 import Link from 'next/link'
 import { useState } from 'react'
+import { useToday } from '@/lib/today'
 
 export function VacanciesView() {
+  const today = useToday()
   const { vacancies, standing, roster, companies, demand } = useWorkforceData()
   const { t } = useLanguage()
   const [tab, setTab] = useState<'open' | 'in_progress' | 'archived'>('open')
@@ -17,10 +18,10 @@ export function VacanciesView() {
   const filtered = vacancies.filter(v => companyId === 'all' || v.companyId === companyId)
   /* Worst first: a job with a real unstaffed slot outranks one starting soon. */
   const list = sortByUrgency(
-    filtered.filter(v => vacancyStatus(v, standing, roster, TODAY) === tab),
+    filtered.filter(v => vacancyStatus(v, standing, roster, today) === tab),
     standing,
     roster,
-    TODAY,
+    today,
     demand,
   )
   return (
@@ -58,15 +59,15 @@ export function VacanciesView() {
           {(['open', 'in_progress', 'archived'] as const).map(value => (
             <button key={value} onClick={() => setTab(value)} className={tab === value ? 'active' : ''}>
               {value === 'in_progress' ? t('In progress') : t(value[0].toUpperCase() + value.slice(1))}{' '}
-              <span>{filtered.filter(v => vacancyStatus(v, standing, roster, TODAY) === value).length}</span>
+              <span>{filtered.filter(v => vacancyStatus(v, standing, roster, today) === value).length}</span>
             </button>
           ))}
         </div>
         <Panel className="full-panel">
           {list.length ? (
             list.map(v => {
-              const urgency = vacancyUrgency(v, standing, roster, TODAY, demand)
-              const note = urgencyNote(v, urgency, TODAY)
+              const urgency = vacancyUrgency(v, standing, roster, today, demand)
+              const note = urgencyNote(v, urgency, today)
               return (
                 <Link className={`vacancy-row urgency-${urgency}`} href={`/vacancies/${v.id}`} key={v.id}>
                   <div className="vacancy-icon">

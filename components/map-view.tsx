@@ -8,8 +8,9 @@ import { AppShell, Badge, PageHeading, Panel, StateBlock } from './app-shell'
 import { useWorkforceData } from './workforce-data-context'
 import { dayStatus } from '@/lib/derive'
 import { travelFor, withinDrive, TRAVEL_COMPUTED_AT, TRAVEL_PROFILE } from '@/lib/travel'
-import { formatDate, TODAY } from '@/lib/types'
+import { formatDate } from '@/lib/types'
 import { useLanguage } from '@/lib/i18n'
+import { useToday } from '@/lib/today'
 
 /* Leaflet writes colours straight into SVG attributes, so it cannot take a CSS
    variable — it has to be handed a resolved string. Reading the token at draw
@@ -31,6 +32,7 @@ type Filter = 'all' | 'free' | 'working'
  *  with a hundred vacancies, hunting for one in a dropdown is worse than
  *  opening the vacancy you were already looking at. */
 export function MapPanel({ vacancyId }: { vacancyId?: string }) {
+  const today = useToday()
   const { leaves, roster, vacancies, workers } = useWorkforceData()
   const { t } = useLanguage()
   const sites = vacancies.filter(v => v.lat !== null && v.lon !== null)
@@ -53,7 +55,7 @@ export function MapPanel({ vacancyId }: { vacancyId?: string }) {
      recompute, which re-ran the marker effect, which refitted the map. That is
      how selecting somebody was resetting the zoom. */
   const active = useMemo(() => workers.filter(w => w.status === 'active'), [workers])
-  const stateOf = (workerId: string) => dayStatus(workerId,TODAY,roster, leaves, vacancies)
+  const stateOf = (workerId: string) => dayStatus(workerId,today,roster, leaves, vacancies)
   const workerById = useMemo(() => new Map(workers.map(w => [w.id, w])), [workers])
 
   const pool = useMemo(

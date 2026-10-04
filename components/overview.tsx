@@ -4,9 +4,10 @@ import { AppShell, Badge, PageHeading, Panel } from '@/components/app-shell'
 import { PeopleTable } from '@/components/people/people-table'
 import { useWorkforceData } from '@/components/workforce-data-context'
 import { availableWorkers, dayStatus, vacancyStatus } from '@/lib/derive'
-import { formatDate, TODAY } from '@/lib/types'
+import { formatDate } from '@/lib/types'
 import { ArrowUpRight, CalendarDays, Plus } from 'lucide-react'
 import Link from 'next/link'
+import { useToday } from '@/lib/today'
 
 export function Metric({
   label,
@@ -33,11 +34,12 @@ export function Metric({
   )
 }
 export function Overview() {
+  const today = useToday()
   const { workers, companies, roster, leaves, vacancies, standing, hours } = useWorkforceData()
   const active = workers.filter(w => w.status === 'active')
-  const free = availableWorkers(workers, TODAY, roster, leaves, vacancies)
-  const open = vacancies.filter(v => vacancyStatus(v, standing, roster, TODAY) === 'open')
-  const leave = workers.filter(w => dayStatus(w.id, TODAY, roster, leaves, vacancies) === 'leave')
+  const free = availableWorkers(workers, today, roster, leaves, vacancies)
+  const open = vacancies.filter(v => vacancyStatus(v, standing, roster, today) === 'open')
+  const leave = workers.filter(w => dayStatus(w.id, today, roster, leaves, vacancies) === 'leave')
   return (
     <AppShell>
       <div className="content-inner">
@@ -48,7 +50,7 @@ export function Overview() {
             day: 'numeric',
             month: 'long',
             year: 'numeric',
-          }).format(new Date(`${TODAY}T12:00:00`))}
+          }).format(new Date(`${today}T12:00:00`))}
           description="Here’s what’s happening across your workforce today."
           action={
             <Link className="button button-primary" href="/vacancies/new">

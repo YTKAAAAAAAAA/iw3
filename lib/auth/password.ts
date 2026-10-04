@@ -93,24 +93,11 @@ export async function authenticatePassword(password: string, identity: string): 
       )
       return result.rows[0]
     })
-  } else if (!(await bcrypt.compare(password, user.password_hash))) {
-    const bootstrapPassword = process.env.INITIAL_ADMIN_PASSWORD
-    if (!bootstrapPassword || bootstrapPassword.length < 12 || !secretsMatch(password, bootstrapPassword)) {
-      await recordFailure(attemptKey)
-      return { ok: false, error: 'Wrong password.' }
-    }
-
-    const hash = await bcrypt.hash(password, 12)
-    user = await withDb(async db => {
-      const { rows } = await db.query<AppUser>(`
-        UPDATE app_user
-        SET password_hash = $1, session_version = session_version + 1
-        WHERE id = $2
-        RETURNING id, password_hash, session_version
-      `, [hash, user.id])
-      return rows[0]
-    })
   }
+  /* Once the account exists, only its own password signs in. The initial
+     password from the environment is never accepted again, so changing the
+     password actually locks out whoever knew the old one. Lost access is
+     recovered on the server with `npm run admin:reset-password`. */
 
   if (!user || !(await bcrypt.compare(password, user.password_hash))) {
     await recordFailure(attemptKey)

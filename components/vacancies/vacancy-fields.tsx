@@ -5,8 +5,9 @@ import { TimeField } from '@/components/app-shell'
 import type { VacancyDraft } from '@/components/vacancies/vacancy-draft'
 import { useWorkforceData } from '@/components/workforce-data-context'
 import type { RequirementKind } from '@/lib/types'
-import { TODAY, weekdayLabel, WEEKDAYS } from '@/lib/types'
+import { weekdayLabel, WEEKDAYS } from '@/lib/types'
 import { useState } from 'react'
+import { useToday } from '@/lib/today'
 
 export function VacancyFields({
   draft,
@@ -15,6 +16,7 @@ export function VacancyFields({
   draft: VacancyDraft
   set: (patch: Partial<VacancyDraft>) => void
 }) {
+  const today = useToday()
   const { companies } = useWorkforceData()
   const [place, setPlace] = useState('')
   const [requirementLabel, setRequirementLabel] = useState('')
@@ -75,7 +77,7 @@ export function VacancyFields({
         <input
           type="checkbox"
           checked={draft.endDate === null}
-          onChange={e => set({ endDate: e.target.checked ? null : TODAY })}
+          onChange={e => set({ endDate: e.target.checked ? null : today })}
         />{' '}
         Open-ended vacancy
       </label>

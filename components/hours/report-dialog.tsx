@@ -4,10 +4,11 @@ import { StateBlock, useExit } from '@/components/app-shell'
 import { useWorkforceData } from '@/components/workforce-data-context'
 import { lastNameOf, reportFilename, reportRows, reportSheet } from '@/lib/hours-report'
 import type { HoursEntry, Vacancy } from '@/lib/types'
-import { formatDate, isoWeek, TODAY, weekDates } from '@/lib/types'
+import { formatDate, isoWeek, weekDates } from '@/lib/types'
 import { downloadXlsx } from '@/lib/xlsx'
 import { FileText, X } from 'lucide-react'
 import { useState } from 'react'
+import { useToday } from '@/lib/today'
 
 export function ReportDialog({
   vacancy,
@@ -18,9 +19,10 @@ export function ReportDialog({
   entries: HoursEntry[]
   onClose: () => void
 }) {
+  const today = useToday()
   const { workers, roster, companies } = useWorkforceData()
   const { closing, close: dismiss } = useExit(onClose)
-  const current = isoWeek(TODAY)
+  const current = isoWeek(today)
   const [week, setWeek] = useState(current.week)
   const [year, setYear] = useState(current.year)
   const days = weekDates(year, week)

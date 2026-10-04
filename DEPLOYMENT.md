@@ -128,10 +128,18 @@ only by the backend app over its private Docker network.
 
 Never put credentials in `NEXT_PUBLIC_*`, source files, command output, Git,
 or deployment artifacts. The first successful login creates the dispatcher
-account using `INITIAL_ADMIN_EMAIL` and `INITIAL_ADMIN_PASSWORD`. If the
-account already exists, the configured initial password can reset its
-password at sign-in. After signing in, remove `INITIAL_ADMIN_PASSWORD` from
-the deployment environment and keep `INITIAL_ADMIN_EMAIL` unchanged.
+account using `INITIAL_ADMIN_EMAIL` and `INITIAL_ADMIN_PASSWORD`. Once the
+account exists, the initial password is never accepted again; only the
+account's own password signs in. After signing in, remove
+`INITIAL_ADMIN_PASSWORD` from the deployment environment and keep
+`INITIAL_ADMIN_EMAIL` unchanged.
+
+To recover a lost password, reset it on the server. This signs out every
+existing session:
+
+```sh
+docker compose exec -e ADMIN_NEW_PASSWORD='<new password>' app node scripts/reset-admin-password.mjs
+```
 
 The local Compose database is a named Docker volume and starts empty. The
 Warehouse snapshot lives in Supabase and is imported with **Sync Warehouse

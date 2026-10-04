@@ -4,12 +4,13 @@ import { AppShell, PageHeading, Panel } from '@/components/app-shell'
 import type { VacancyDraft } from '@/components/vacancies/vacancy-draft'
 import { VacancyFields } from '@/components/vacancies/vacancy-fields'
 import { useWorkforceData } from '@/components/workforce-data-context'
-import { TODAY } from '@/lib/types'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
+import { useToday } from '@/lib/today'
 
 export function VacancyForm() {
+  const today = useToday()
   const router = useRouter()
   const { companies } = useWorkforceData()
   const [draft, setDraft] = useState<VacancyDraft>({
@@ -17,7 +18,7 @@ export function VacancyForm() {
     companyId: companies[0]?.id ?? '',
     address: null,
     description: '',
-    startDate: TODAY,
+    startDate: today,
     endDate: null,
     timing: 'window',
     start: '08:00',
