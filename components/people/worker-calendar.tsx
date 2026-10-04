@@ -1,5 +1,6 @@
 'use client'
 
+import { useLanguage } from '@/lib/i18n'
 import { Badge, Panel } from '@/components/app-shell'
 import { useWorkforceData } from '@/components/workforce-data-context'
 import { assignmentOn } from '@/lib/derive'
@@ -19,6 +20,7 @@ import { useToday } from '@/lib/today'
    everything picked. The same selection is what removes leave again.
    ------------------------------------------------------------------ */
 export function Calendar({ workerId }: { workerId: string }) {
+  const { t } = useLanguage()
   const today = useToday()
   const { leaves, roster, vacancies } = useWorkforceData()
   const [view, setView] = useState({ y: Number(today.slice(0, 4)), m: Number(today.slice(5, 7)) - 1 })
@@ -152,11 +154,11 @@ export function Calendar({ workerId }: { workerId: string }) {
   return (
     <div className="calendar-area">
       <div className="calendar-head">
-        <button className="icon-button" onClick={() => shiftMonth(-1)} aria-label="Previous month">
+        <button className="icon-button" onClick={() => shiftMonth(-1)} aria-label={t('Previous month')}>
           <ChevronLeft />
         </button>
         <strong>{new Intl.DateTimeFormat('en-GB', { month: 'long', year: 'numeric' }).format(first)}</strong>
-        <button className="icon-button" onClick={() => shiftMonth(1)} aria-label="Next month">
+        <button className="icon-button" onClick={() => shiftMonth(1)} aria-label={t('Next month')}>
           <ChevronRight />
         </button>
       </div>
@@ -184,17 +186,17 @@ export function Calendar({ workerId }: { workerId: string }) {
       <div className="legend">
         <span>
           <i className="working" />
-          Working
+          {t('Working')}
         </span>
         <span>
           <i className="leave" />
-          Leave
+          {t('Leave')}
         </span>
         <span>
           <i className="free" />
-          Free
+          {t('Free')}
         </span>
-        <span className="legend-hint">Click to pick · shift-click for a span</span>
+        <span className="legend-hint">{t('Click to pick · shift-click for a span')}</span>
       </div>
 
       <Panel className="selected-day">
@@ -209,28 +211,28 @@ export function Calendar({ workerId }: { workerId: string }) {
             <p>
               {single
                 ? single === today
-                  ? 'Today'
+                  ? t('Today')
                   : single < today
-                    ? 'Past day'
-                    : 'Future day'
+                    ? t('Past day')
+                    : t('Future day')
                 : chosen.length
                   ? `${formatDate(chosen[0])} – ${formatDate(chosen[chosen.length - 1])}`
-                  : 'Nothing picked yet'}
+                  : t('Nothing picked yet')}
             </p>
           </div>
           {single && (
             <Badge tone={leaveOn(single) ? 'orange' : info ? 'blue' : 'neutral'}>
-              {leaveOn(single) ? 'Leave' : info ? 'Working' : 'Free'}
+              {leaveOn(single) ? t('Leave') : info ? t('Working') : t('Free')}
             </Badge>
           )}
           {!single && chosen.length > 0 && (
             <button className="button button-secondary button-small" onClick={() => setPicked([])}>
-              Clear
+              {t('Clear')}
             </button>
           )}
         </div>
 
-        {!chosen.length && <p className="muted-copy">Pick one or more days in the calendar above.</p>}
+        {!chosen.length && <p className="muted-copy">{t('Pick one or more days in the calendar above.')}</p>}
 
         {removable.length > 0 && (
           <div className="day-action">
@@ -240,16 +242,16 @@ export function Calendar({ workerId }: { workerId: string }) {
             <span>
               {removable.length === 1
                 ? leaveOn(removable[0])!.paidLeave
-                  ? 'Paid leave'
-                  : 'Unpaid leave'
-                : 'Selected days that are marked off'}
+                  ? t('Paid leave')
+                  : t('Unpaid leave')
+                : t('Selected days that are marked off')}
             </span>
             <button
               className="button button-secondary"
               onClick={() => void removeOff()}
               disabled={savingAbsence}
             >
-              {removable.length === 1 ? 'Remove day off' : `Remove ${removable.length} days off`}
+              {removable.length === 1 ? t('Remove day off') : `Remove ${removable.length} days off`}
             </button>
           </div>
         )}
@@ -257,19 +259,20 @@ export function Calendar({ workerId }: { workerId: string }) {
         {markable.length > 0 && (
           <div className="day-action">
             <input
-              placeholder="Reason"
-              aria-label="Day off reason"
+              placeholder={t('Reason')}
+              aria-label={t('Day off reason')}
               value={reason}
               onChange={e => setReason(e.target.value)}
             />
             <label>
-              <input type="checkbox" checked={paid} onChange={e => setPaid(e.target.checked)} /> Paid leave
+              <input type="checkbox" checked={paid} onChange={e => setPaid(e.target.checked)} />{' '}
+              {t('Paid leave')}
             </label>
             <button className="button button-primary" onClick={() => void markOff()} disabled={savingAbsence}>
               {savingAbsence
-                ? 'Saving…'
+                ? t('Saving…')
                 : markable.length === 1
-                  ? 'Mark as day off'
+                  ? t('Mark as day off')
                   : `Mark ${markable.length} days off`}
             </button>
           </div>
@@ -284,8 +287,9 @@ export function Calendar({ workerId }: { workerId: string }) {
         )}
         {pastDays.length > 0 && (
           <p className="muted-copy">
-            {pastDays.length === 1 ? 'One selected day' : `${pastDays.length} selected days`} already passed
-            and can only be viewed.
+            {pastDays.length === 1
+              ? t('One selected day already passed and can only be viewed.')
+              : t('{count} selected days already passed and can only be viewed.', { count: pastDays.length })}
           </p>
         )}
       </Panel>

@@ -172,7 +172,7 @@ export function VacancyView({ id }: { id: string }) {
     <AppShell title="Vacancy">
       <div className="content-inner">
         <div className="back-link">
-          <Link href="/vacancies">← Back to vacancies</Link>
+          <Link href="/vacancies">{t('← Back to vacancies')}</Link>
         </div>
         <PageHeading
           eyebrow="Vacancy detail"
@@ -201,11 +201,11 @@ export function VacancyView({ id }: { id: string }) {
         <Panel className="full-panel">
           <div className="panel-header">
             <div>
-              <h2>Details</h2>
+              <h2>{t('Details')}</h2>
               <p>
                 {editing
-                  ? 'Every field the client can ask us to change.'
-                  : 'What the team does here, and how the job is set up.'}
+                  ? t('Every field the client can ask us to change.')
+                  : t('What the team does here, and how the job is set up.')}
               </p>
             </div>
             {!editing && (
@@ -230,7 +230,7 @@ export function VacancyView({ id }: { id: string }) {
                   </button>
                 )}
                 <button className="button button-secondary" onClick={startEditing}>
-                  Edit
+                  {t('Edit')}
                 </button>
               </div>
             )}
@@ -257,19 +257,19 @@ export function VacancyView({ id }: { id: string }) {
                   disabled={saving}
                   onClick={() => setEditing(false)}
                 >
-                  Cancel
+                  {t('Cancel')}
                 </button>
                 <button className="button button-primary" disabled={saving} onClick={save}>
-                  {saving ? 'Saving…' : 'Save vacancy'}
+                  {saving ? t('Saving…') : t('Save vacancy')}
                 </button>
               </div>
             </div>
           ) : (
             <>
-              <p className="muted-copy panel-body">{v.description || 'No description yet.'}</p>
+              <p className="muted-copy panel-body">{v.description || t('No description yet.')}</p>
               {Boolean(v.requirements?.length) && (
                 <div className="vacancy-requirements">
-                  <h3>What this vacancy requires</h3>
+                  <h3>{t('What this vacancy requires')}</h3>
                   {v.requirements?.map(requirement => (
                     <div className="vacancy-requirement" key={requirement.id}>
                       <span>
@@ -277,7 +277,7 @@ export function VacancyView({ id }: { id: string }) {
                         <small>{requirement.kind}</small>
                       </span>
                       <Badge tone={requirement.required ? 'orange' : 'neutral'}>
-                        {requirement.required ? 'Required' : 'Preferred'}
+                        {requirement.required ? t('Required') : t('Preferred')}
                       </Badge>
                     </div>
                   ))}
@@ -290,8 +290,8 @@ export function VacancyView({ id }: { id: string }) {
         <Panel className="full-panel">
           <div className="panel-header">
             <div>
-              <h2>Schedule</h2>
-              <p>How this object is normally staffed.</p>
+              <h2>{t('Schedule')}</h2>
+              <p>{t('How this object is normally staffed.')}</p>
             </div>
           </div>
           <ul className="schedule-lines">
@@ -311,14 +311,16 @@ export function VacancyView({ id }: { id: string }) {
         <Panel className="full-panel vacancy-map">
           <div className="panel-header">
             <div>
-              <h2>Who is nearby</h2>
+              <h2>{t('Who is nearby')}</h2>
               <p>
-                Road distance from {v.address}. Kilometres show on every candidate when picking people; the
-                map is for choosing by eye.
+                {t(
+                  'Road distance from {address}. Kilometres show on every candidate when picking people; the map is for choosing by eye.',
+                  { address: v.address },
+                )}
               </p>
             </div>
             <button className="button button-secondary" onClick={() => setShowMap(x => !x)}>
-              {showMap ? 'Hide map' : 'Show on map'}
+              {showMap ? t('Hide map') : t('Show on map')}
             </button>
           </div>
           {showMap && (

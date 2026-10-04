@@ -112,7 +112,7 @@ export function Overview() {
                   <strong>{w.fullName}</strong>
                   <span>{[w.city, t('Available today')].filter(Boolean).join(' · ')}</span>
                 </div>
-                <Badge tone="green">Free</Badge>
+                <Badge tone="green">{t('Free')}</Badge>
               </Link>
             ))}
             {!free.length && <p className="panel-empty">{t('Nobody is free today.')}</p>}

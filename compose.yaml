@@ -38,8 +38,12 @@ services:
       SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in .env}
       BACKEND_PROXY_SECRET: ${BACKEND_PROXY_SECRET:-}
       INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL:-dispatcher@local}
-      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:?Set INITIAL_ADMIN_PASSWORD in .env}
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-}
       GEOCODER_USER_AGENT: ${GEOCODER_USER_AGENT:-InternationalAtWork/1.0}
+      SYNC_INTERVAL_MINUTES: ${SYNC_INTERVAL_MINUTES:-60}
+      ROUTING_BASE_URL: ${ROUTING_BASE_URL:-https://router.project-osrm.org}
+    volumes:
+      - photos_data:/app/data/photos
     depends_on:
       postgres:
         condition: service_healthy
@@ -49,10 +53,42 @@ services:
     ports:
       - "127.0.0.1:3000:3000"
     restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777
+      - /app/.next/cache:uid=1000,gid=1000
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
+
+  # Daily pg_dump + photo archive, each verified by a test restore
+  # (docker/backup.sh). Copy ./backups off the server as well: a backup on
+  # the same disk does not survive losing that disk.
+  backup:
+    image: postgres:17-alpine
+    environment:
+      PGHOST: postgres
+      PGUSER: postgres
+      PGDATABASE: dispatcher
+      PGPASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?Set POSTGRES_SUPERUSER_PASSWORD in .env}
+      BACKUP_AT: ${BACKUP_AT:-03:30}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+      BACKUP_PING_URL: ${BACKUP_PING_URL:-}
+      TZ: Europe/Amsterdam
+    entrypoint: ["sh", "/backup.sh"]
+    volumes:
+      - ./docker/backup.sh:/backup.sh:ro
+      - ${BACKUP_DIR:-./backups}:/backups
+      - photos_data:/photos:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - database
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
 
 networks:
   database:
@@ -61,3 +97,4 @@ networks:
 
 volumes:
   postgres_data:
+  photos_data:

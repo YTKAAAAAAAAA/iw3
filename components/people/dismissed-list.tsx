@@ -47,7 +47,7 @@ export function DismissedList() {
                 })}
               </td>
               <td>
-                <Badge tone="neutral">Dismissed</Badge>
+                <Badge tone="neutral">{t('Dismissed')}</Badge>
               </td>
               <td>
                 <RestoreWorkerButton id={w.id} name={w.fullName} />
@@ -68,6 +68,7 @@ export function DismissedList() {
 
 export function RestoreWorkerButton({ id, name }: { id: string; name: string }) {
   const router = useRouter()
+  const { t } = useLanguage()
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const restore = async () => {
@@ -91,7 +92,7 @@ export function RestoreWorkerButton({ id, name }: { id: string; name: string }) 
         disabled={saving}
         onClick={() => void restore()}
       >
-        {saving ? 'Restoring…' : 'Restore'}
+        {saving ? t('Restoring…') : t('Restore')}
       </button>
       {error && <span role="alert">{error}</span>}
       <span className="visually-hidden">{name}</span>

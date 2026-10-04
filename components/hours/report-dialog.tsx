@@ -1,5 +1,6 @@
 'use client'
 
+import { useLanguage } from '@/lib/i18n'
 import { StateBlock, useExit } from '@/components/app-shell'
 import { useWorkforceData } from '@/components/workforce-data-context'
 import { lastNameOf, reportFilename, reportRows, reportSheet } from '@/lib/hours-report'
@@ -19,6 +20,7 @@ export function ReportDialog({
   entries: HoursEntry[]
   onClose: () => void
 }) {
+  const { t } = useLanguage()
   const today = useToday()
   const { workers, roster, companies } = useWorkforceData()
   const { closing, close: dismiss } = useExit(onClose)
@@ -45,18 +47,18 @@ export function ReportDialog({
       <div className="dialog dialog-wide" onClick={e => e.stopPropagation()}>
         <div className="panel-header">
           <div>
-            <h2>Weekly report</h2>
+            <h2>{t('Weekly report')}</h2>
             <p>
               {input.company?.name} · {vacancy.title}
             </p>
           </div>
-          <button className="icon-button" onClick={dismiss} aria-label="Close">
+          <button className="icon-button" onClick={dismiss} aria-label={t('Close')}>
             <X />
           </button>
         </div>
         <div className="dialog-row">
           <label>
-            ISO week
+            {t('ISO week')}
             <input
               type="number"
               min={1}
@@ -66,7 +68,7 @@ export function ReportDialog({
             />
           </label>
           <label>
-            Year
+            {t('Year')}
             <input
               type="number"
               value={year}
@@ -75,9 +77,10 @@ export function ReportDialog({
           </label>
         </div>
         <p className="dialog-note">
-          Week {week} runs {formatDate(days[0])} – {formatDate(days[6])}. The sheet goes out in the client's
-          own layout — their name across the top, our contact lines, one row per person and the signature
-          block at the foot.
+          {t(
+            "Week {week} runs {from} – {to}. The sheet goes out in the client's own layout — their name across the top, our contact lines, one row per person and the signature block at the foot.",
+            { week, from: formatDate(days[0]), to: formatDate(days[6]) },
+          )}
           {vacancy.defaultHours !== null &&
             ` Days nobody typed count as ${vacancy.defaultHours} h for whoever was on the schedule.`}
         </p>
@@ -86,13 +89,13 @@ export function ReportDialog({
             <table className="report-table">
               <thead>
                 <tr>
-                  <th>F-Name</th>
-                  <th>L-Name</th>
-                  <th>Projectcode</th>
+                  <th>{t('F-Name')}</th>
+                  <th>{t('L-Name')}</th>
+                  <th>{t('Projectcode')}</th>
                   {days.map(d => (
                     <th key={d}>{formatDate(d)}</th>
                   ))}
-                  <th>Total</th>
+                  <th>{t('Total')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -113,7 +116,7 @@ export function ReportDialog({
               <tfoot>
                 <tr>
                   <td colSpan={3}>
-                    {rows.length} {rows.length === 1 ? 'person' : 'people'}
+                    {rows.length} {rows.length === 1 ? t('person') : t('people')}
                   </td>
                   {days.map((d, i) => (
                     <td key={d}>
@@ -135,11 +138,11 @@ export function ReportDialog({
         )}
         <div className="form-footer">
           <button className="button button-secondary" onClick={dismiss}>
-            Close
+            {t('Close')}
           </button>
           <button className="button button-primary" disabled={!rows.length} onClick={download}>
             <FileText />
-            Download Excel
+            {t('Download Excel')}
           </button>
         </div>
       </div>

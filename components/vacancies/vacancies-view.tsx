@@ -35,7 +35,7 @@ export function VacanciesView() {
           action={
             <Link className="button button-primary" href="/vacancies/new">
               <Plus />
-              Create vacancy
+              {t('Create vacancy')}
             </Link>
           }
         />
@@ -76,9 +76,7 @@ export function VacanciesView() {
                   </div>
                   <div>
                     <strong>{v.title}</strong>
-                    <span>
-                      {joinDetails(companies.find(c => c.id === v.companyId)?.name, v.address)}
-                    </span>
+                    <span>{joinDetails(companies.find(c => c.id === v.companyId)?.name, v.address)}</span>
                   </div>
                   <Badge
                     tone={
@@ -95,8 +93,8 @@ export function VacanciesView() {
                   >
                     {note
                       ? urgency === 'late'
-                        ? 'Unstaffed'
-                        : 'Starts soon'
+                        ? t('Unstaffed')
+                        : t('Starts soon')
                       : tab === 'in_progress'
                         ? t('In progress')
                         : t(tab[0].toUpperCase() + tab.slice(1))}
@@ -116,7 +114,7 @@ export function VacanciesView() {
               action={
                 <Link href="/vacancies/new" className="button button-primary">
                   <Plus />
-                  Create vacancy
+                  {t('Create vacancy')}
                 </Link>
               }
             />

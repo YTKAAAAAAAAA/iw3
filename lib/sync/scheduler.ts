@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { withDb } from '@/lib/db'
+import { syncIntervalMinutes } from './schedule-config'
 import { refreshTravelDistances } from '@/lib/travel/refresh'
 import { FlexpediaSyncError, recordFlexpediaSyncFailure, syncFlexpediaEmployees } from './flexpedia-sync'
 import { FlexpediaConfigurationError, FlexpediaRequestError } from './flexpedia-test'
@@ -15,15 +16,6 @@ import {
 const CHECK_EVERY_MS = 5 * 60_000
 const FIRST_CHECK_MS = 60_000
 
-/** Minutes between automatic syncs. 60 by default in production; off in
- *  development unless SYNC_INTERVAL_MINUTES is set, so a local `next dev`
- *  does not quietly import into whatever database it points at. */
-export function syncIntervalMinutes(): number {
-  const configured = process.env.SYNC_INTERVAL_MINUTES
-  if (configured === undefined || configured === '') return process.env.NODE_ENV === 'production' ? 60 : 0
-  const minutes = Number(configured)
-  return Number.isFinite(minutes) && minutes > 0 ? minutes : 0
-}
 
 type Due = { supabase: boolean; flexpedia: boolean }
 

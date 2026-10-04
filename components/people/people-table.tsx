@@ -39,11 +39,15 @@ export function PeopleTable({ compact = false }: { compact?: boolean }) {
 
   const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
   const currentPage = Math.min(page, pages)
-  const visible = compact ? rows.slice(0, 5) : rows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
-  const filterChanged = <T,>(set: (value: T) => void) => (value: T) => {
-    set(value)
-    setPage(1)
-  }
+  const visible = compact
+    ? rows.slice(0, 5)
+    : rows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+  const filterChanged =
+    <T,>(set: (value: T) => void) =>
+    (value: T) => {
+      set(value)
+      setPage(1)
+    }
 
   return (
     <div className="table-wrap">
@@ -140,7 +144,11 @@ export function PeopleTable({ compact = false }: { compact?: boolean }) {
                 </small>
               </td>
               <td className="people-open">
-                <Link className="icon-button" href={`/people/${w.id}`} aria-label={t('Open {name}', { name: w.fullName })}>
+                <Link
+                  className="icon-button"
+                  href={`/people/${w.id}`}
+                  aria-label={t('Open {name}', { name: w.fullName })}
+                >
                   <ArrowUpRight />
                 </Link>
               </td>

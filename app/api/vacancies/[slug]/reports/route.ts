@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth/guard'
 import { withDb } from '@/lib/db'
+import { deletePhoto, savePhoto } from '@/lib/photo-storage'
 import { detectWorkdayPhotoType, WORKDAY_PHOTO_MAX_BYTES } from '@/lib/workday-photo'
 
 type RouteContext = { params: Promise<{ slug: string }> }
@@ -79,20 +80,27 @@ export async function POST(request: Request, { params }: RouteContext) {
   if (!contentType) return jsonError(415, 'Use a JPEG, PNG, or WebP photo.')
 
   const { slug } = await params
+  let storageKey: string | null = null
   try {
+    storageKey = await savePhoto(image, contentType)
+    const key = storageKey
     const created = await withDb(async db => {
       const vacancy = await db.query<{ id: number }>('SELECT id FROM vacancy WHERE slug = $1', [slug])
       if (!vacancy.rows[0]) return null
       const photo = await db.query<{ id: string }>(`
-        INSERT INTO vacancy_workday_photo (vacancy_id, work_date, content_type, image, byte_size)
+        INSERT INTO vacancy_workday_photo (vacancy_id, work_date, content_type, storage_key, byte_size)
         VALUES ($1, $2::date, $3, $4, $5)
         RETURNING id::text
-      `, [vacancy.rows[0].id, date, contentType, image, image.byteLength])
+      `, [vacancy.rows[0].id, date, contentType, key, image.byteLength])
       return photo.rows[0].id
     })
-    if (!created) return jsonError(404, 'Vacancy not found.')
+    if (!created) {
+      await deletePhoto(key)
+      return jsonError(404, 'Vacancy not found.')
+    }
     return NextResponse.json({ id: created }, { status: 201, headers: { 'Cache-Control': 'private, no-store' } })
   } catch (error) {
+    if (storageKey) await deletePhoto(storageKey).catch(() => {})
     console.error('Failed to save workday photo.', error)
     return jsonError(500, 'Could not save the photo.')
   }

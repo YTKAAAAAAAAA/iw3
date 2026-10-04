@@ -5,7 +5,13 @@ import './globals.css'
 /* Shown only when the root layout itself fails, so nothing from it is
    available: no language setting and no theme class. The text is therefore
    given in both languages and the colours follow the system theme. */
-export default function GlobalError({ error, retry }: { error: Error & { digest?: string }; retry: () => void }) {
+export default function GlobalError({
+  error,
+  retry,
+}: {
+  error: Error & { digest?: string }
+  retry: () => void
+}) {
   return (
     <html lang="en">
       <body className="antialiased">

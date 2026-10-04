@@ -21,7 +21,7 @@ import {
   recordFlexpediaSyncFailure,
   syncFlexpediaEmployees,
 } from '@/lib/sync/flexpedia-sync'
-import { syncIntervalMinutes } from '@/lib/sync/scheduler'
+import { syncIntervalMinutes } from '@/lib/sync/schedule-config'
 import { refreshTravelDistances } from '@/lib/travel/refresh'
 
 export const dynamic = 'force-dynamic'

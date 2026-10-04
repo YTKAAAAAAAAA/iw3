@@ -7,3 +7,4 @@ data
 *.sql.dump
 *.sql.gz
 npm-debug.log*
+backups

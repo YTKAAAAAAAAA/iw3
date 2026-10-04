@@ -26,3 +26,7 @@ tsconfig.tsbuildinfo
 /data/postgres/
 *.sql.dump
 *.sql.gz
+
+# Local backups and photo storage
+/backups/
+/data/photos/

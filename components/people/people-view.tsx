@@ -21,7 +21,7 @@ export function PeopleView() {
       <div className="content-inner">
         <PageHeading
           eyebrow="Workforce directory"
-          title={dismissed ? 'Dismissed people' : 'People'}
+          title={dismissed ? t('Dismissed people') : t('People')}
           description={
             dismissed
               ? 'Historical records remain available for reports and hours.'

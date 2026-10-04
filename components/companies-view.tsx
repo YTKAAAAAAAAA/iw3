@@ -1,5 +1,6 @@
 'use client'
 
+import { useLanguage } from '@/lib/i18n'
 import { AppShell, PageHeading, Panel, useExit } from '@/components/app-shell'
 import { useWorkforceData } from '@/components/workforce-data-context'
 import type { Company } from '@/lib/types'
@@ -9,6 +10,7 @@ import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
 export function CompaniesView() {
+  const { t } = useLanguage()
   const router = useRouter()
   const { companies, workers } = useWorkforceData()
   const [list, setList] = useState<Company[]>(companies)
@@ -128,7 +130,7 @@ export function CompaniesView() {
           action={
             <button className="button button-primary" onClick={() => open('new')}>
               <Plus />
-              Add company
+              {t('Add company')}
             </button>
           }
         />
@@ -139,12 +141,12 @@ export function CompaniesView() {
                 <div className="company-logo">{c.logoUrl ? <img src={c.logoUrl} alt="" /> : c.name[0]}</div>
                 <div>
                   <h2>{c.name}</h2>
-                  <p>
-                    {joinDetails(c.contactPerson, c.phone)}
-                  </p>
+                  <p>{joinDetails(c.contactPerson, c.phone)}</p>
                   <strong>
-                    {workers.filter(w => w.status === 'active' && w.companyAccess.includes(c.id)).length}{' '}
-                    people with access
+                    {t('{count} people with access', {
+                      count: workers.filter(w => w.status === 'active' && w.companyAccess.includes(c.id))
+                        .length,
+                    })}
                   </strong>
                 </div>
                 <button className="icon-button" aria-label={`Edit ${c.name}`} onClick={() => open(c)}>
@@ -158,29 +160,29 @@ export function CompaniesView() {
           <div className={`dialog-backdrop ${closing ? 'closing' : ''}`} onClick={dismiss}>
             <div className="dialog" onClick={e => e.stopPropagation()}>
               <div className="panel-header">
-                <h2>{editing === 'new' ? 'Add company' : 'Edit company'}</h2>
-                <button className="icon-button" onClick={dismiss} aria-label="Close">
+                <h2>{editing === 'new' ? t('Add company') : t('Edit company')}</h2>
+                <button className="icon-button" onClick={dismiss} aria-label={t('Close')}>
                   <X />
                 </button>
               </div>
               <label>
-                Company name
+                {t('Company name')}
                 <input
-                  placeholder="Company name"
+                  placeholder={t('Company name')}
                   value={draft.name}
                   onChange={e => setDraft({ ...draft, name: e.target.value })}
                 />
               </label>
               <label>
-                Contact person
+                {t('Contact person')}
                 <input
-                  placeholder="Name"
+                  placeholder={t('Name')}
                   value={draft.contactPerson}
                   onChange={e => setDraft({ ...draft, contactPerson: e.target.value })}
                 />
               </label>
               <label>
-                Phone
+                {t('Phone')}
                 <input
                   placeholder="+31"
                   value={draft.phone}
@@ -188,10 +190,10 @@ export function CompaniesView() {
                 />
               </label>
               <label>
-                Notes
+                {t('Notes')}
                 <textarea value={draft.notes} onChange={e => setDraft({ ...draft, notes: e.target.value })} />
               </label>
-              <p className="field-hint">Logo uploads are not available yet.</p>
+              <p className="field-hint">{t('Logo uploads are not available yet.')}</p>
               {error && (
                 <p className="dialog-note" role="alert">
                   {error}
@@ -199,10 +201,10 @@ export function CompaniesView() {
               )}
               <div className="form-footer">
                 <button className="button button-secondary" disabled={saving} onClick={dismiss}>
-                  Cancel
+                  {t('Cancel')}
                 </button>
                 <button className="button button-primary" disabled={saving} onClick={save}>
-                  {saving ? 'Saving…' : 'Save company'}
+                  {saving ? t('Saving…') : t('Save company')}
                 </button>
               </div>
             </div>

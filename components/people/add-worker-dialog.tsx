@@ -1,5 +1,6 @@
 'use client'
 
+import { useLanguage } from '@/lib/i18n'
 import { useExit } from '@/components/app-shell'
 import { useWorkforceData } from '@/components/workforce-data-context'
 import { X } from 'lucide-react'
@@ -8,6 +9,7 @@ import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
 export function AddManualWorkerDialog({ onClose }: { onClose: () => void }) {
+  const { t } = useLanguage()
   const router = useRouter()
   const { companies } = useWorkforceData()
   const [fullName, setFullName] = useState('')
@@ -70,17 +72,19 @@ export function AddManualWorkerDialog({ onClose }: { onClose: () => void }) {
       >
         <div className="panel-header">
           <div>
-            <h2 id="manual-worker-title">Add person manually</h2>
+            <h2 id="manual-worker-title">{t('Add person manually')}</h2>
             <p>
-              This person can be linked to Flexpedia later without replacing their local schedule history.
+              {t(
+                'This person can be linked to Flexpedia later without replacing their local schedule history.',
+              )}
             </p>
           </div>
-          <button className="icon-button" onClick={dismiss} aria-label="Close" disabled={saving}>
+          <button className="icon-button" onClick={dismiss} aria-label={t('Close')} disabled={saving}>
             <X />
           </button>
         </div>
         <label>
-          Full name
+          {t('Full name')}
           <input
             autoFocus
             value={fullName}
@@ -89,11 +93,11 @@ export function AddManualWorkerDialog({ onClose }: { onClose: () => void }) {
               setFullName(e.target.value)
               setConflicts([])
             }}
-            placeholder="First and last name"
+            placeholder={t('First and last name')}
           />
         </label>
         <fieldset className="manual-worker-companies">
-          <legend>Company access</legend>
+          <legend>{t('Company access')}</legend>
           {companies.map(company => (
             <label key={company.id}>
               <input
@@ -113,7 +117,7 @@ export function AddManualWorkerDialog({ onClose }: { onClose: () => void }) {
         </fieldset>
         {!companies.length && (
           <p className="dialog-note" role="alert">
-            Create a company before adding a person.
+            {t('Create a company before adding a person.')}
           </p>
         )}
         {error && (
@@ -127,7 +131,7 @@ export function AddManualWorkerDialog({ onClose }: { onClose: () => void }) {
               {conflicts.map(person => (
                 <li key={person.id}>
                   <span>
-                    <strong>{person.fullName}</strong> — same name
+                    <strong>{person.fullName}</strong> {t('— same name')}
                   </span>
                   <button
                     type="button"
@@ -135,28 +139,29 @@ export function AddManualWorkerDialog({ onClose }: { onClose: () => void }) {
                     disabled={saving}
                     onClick={() => void save(false, String(person.id))}
                   >
-                    Choose this person
+                    {t('Choose this person')}
                   </button>
                 </li>
               ))}
             </ul>
             <p className="dialog-note">
-              The first dispatcher to choose will decide for everyone submitting this same name; selecting an
-              existing person never merges records.
+              {t(
+                'The first dispatcher to choose will decide for everyone submitting this same name; selecting an existing person never merges records.',
+              )}
             </p>
           </>
         )}
         {sharedResolution && (
           <div className="form-footer">
             <Link className="button button-primary" href={`/people/${sharedResolution.id}`} onClick={dismiss}>
-              Open {sharedResolution.fullName}
+              {t('Open {name}', { name: sharedResolution.fullName })}
             </Link>
           </div>
         )}
         {!sharedResolution && (
           <div className="form-footer">
             <button className="button button-secondary" disabled={saving} onClick={dismiss}>
-              Cancel
+              {t('Cancel')}
             </button>
             {conflicts.length > 0 ? (
               <button
@@ -164,7 +169,7 @@ export function AddManualWorkerDialog({ onClose }: { onClose: () => void }) {
                 disabled={saving || !companyIds.length}
                 onClick={() => void save(true)}
               >
-                {saving ? 'Saving…' : 'Add as a separate person'}
+                {saving ? t('Saving…') : t('Add as a separate person')}
               </button>
             ) : (
               <button
@@ -172,7 +177,7 @@ export function AddManualWorkerDialog({ onClose }: { onClose: () => void }) {
                 disabled={saving || !fullName.trim() || !companyIds.length}
                 onClick={() => void save()}
               >
-                {saving ? 'Saving…' : 'Add person'}
+                {saving ? t('Saving…') : t('Add person')}
               </button>
             )}
           </div>

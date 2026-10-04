@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth/guard'
 import { withDb } from '@/lib/db'
+import { deletePhoto, readPhoto } from '@/lib/photo-storage'
 
 type RouteContext = { params: Promise<{ slug: string; photoId: string }> }
 const jsonError = (status: number, error: string) => NextResponse.json({ error }, { status })
@@ -13,8 +14,8 @@ export async function GET(_request: Request, { params }: RouteContext) {
 
   try {
     const photo = await withDb(async db => {
-      const result = await db.query<{ content_type: string; image: Buffer }>(`
-        SELECT photo.content_type, photo.image
+      const result = await db.query<{ content_type: string; image: Buffer | null; storage_key: string | null }>(`
+        SELECT photo.content_type, photo.image, photo.storage_key
         FROM vacancy_workday_photo photo
         JOIN vacancy v ON v.id = photo.vacancy_id
         WHERE v.slug = $1 AND photo.id = $2
@@ -22,16 +23,23 @@ export async function GET(_request: Request, { params }: RouteContext) {
       return result.rows[0] ?? null
     })
     if (!photo) return jsonError(404, 'Photo not found.')
-    return new NextResponse(new Uint8Array(photo.image), {
+    // Photos not yet moved out of the database are still served from it.
+    const bytes = photo.storage_key ? await readPhoto(photo.storage_key) : photo.image
+    if (!bytes) return jsonError(404, 'Photo not found.')
+    return new NextResponse(new Uint8Array(bytes), {
       headers: {
         'Content-Type': photo.content_type,
-        'Content-Length': String(photo.image.byteLength),
+        'Content-Length': String(bytes.byteLength),
         'Content-Disposition': 'inline',
         'Cache-Control': 'private, no-store',
         'X-Content-Type-Options': 'nosniff',
       },
     })
   } catch (error) {
+    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') {
+      console.error('A workday photo file is missing from storage.', { photoId })
+      return jsonError(404, 'Photo not found.')
+    }
     console.error('Failed to load workday photo.', error)
     return jsonError(500, 'Could not load the photo.')
   }
@@ -44,15 +52,17 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
 
   try {
     const deleted = await withDb(async db => {
-      const result = await db.query(`
+      const result = await db.query<{ storage_key: string | null }>(`
         DELETE FROM vacancy_workday_photo photo
         USING vacancy v
         WHERE photo.vacancy_id = v.id AND v.slug = $1 AND photo.id = $2
-        RETURNING photo.id
+        RETURNING photo.storage_key
       `, [slug, photoId])
-      return result.rowCount === 1
+      return result.rows[0] ?? null
     })
-    return deleted ? new NextResponse(null, { status: 204 }) : jsonError(404, 'Photo not found.')
+    if (!deleted) return jsonError(404, 'Photo not found.')
+    if (deleted.storage_key) await deletePhoto(deleted.storage_key)
+    return new NextResponse(null, { status: 204 })
   } catch (error) {
     console.error('Failed to delete workday photo.', error)
     return jsonError(500, 'Could not delete the photo.')

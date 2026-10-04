@@ -1,5 +1,6 @@
 'use client'
 
+import { useLanguage } from '@/lib/i18n'
 import { AppShell, Badge, PageHeading, Panel, StateBlock } from '@/components/app-shell'
 import { ReportDialog } from '@/components/hours/report-dialog'
 import { useWorkforceData } from '@/components/workforce-data-context'
@@ -12,6 +13,7 @@ import { useState } from 'react'
 import { useToday } from '@/lib/today'
 
 export function HoursView() {
+  const { t } = useLanguage()
   const today = useToday()
   const { vacancies, standing, roster, hours, workers, leaves, companies } = useWorkforceData()
   const trackableVacancies = vacancies.filter(
@@ -120,18 +122,18 @@ export function HoursView() {
           action={
             <button className="button button-secondary" onClick={() => setReport(true)}>
               <FileText />
-              Weekly report
+              {t('Weekly report')}
             </button>
           }
         />
         <Panel className="hours-panel">
           <div className="table-toolbar">
             <label>
-              Date
+              {t('Date')}
               <input type="date" value={date} onChange={e => setDate(e.target.value)} />
             </label>
             <label>
-              Vacancy
+              {t('Vacancy')}
               <select value={vacancyId} onChange={e => setVacancyId(e.target.value)}>
                 {trackableVacancies.map(x => (
                   <option key={x.id} value={x.id}>
@@ -140,15 +142,15 @@ export function HoursView() {
                 ))}
               </select>
             </label>
-            {!inPeriod && <Badge tone="orange">Date outside vacancy period</Badge>}
+            {!inPeriod && <Badge tone="orange">{t('Date outside vacancy period')}</Badge>}
           </div>
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>Person</th>
-                  <th>Availability</th>
-                  <th>Hours</th>
+                  <th>{t('Person')}</th>
+                  <th>{t('Availability')}</th>
+                  <th>{t('Hours')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -166,11 +168,11 @@ export function HoursView() {
                       </td>
                       <td>
                         {state === 'leave' ? (
-                          <Badge tone="orange">On leave</Badge>
+                          <Badge tone="orange">{t('On leave')}</Badge>
                         ) : state === 'working' ? (
-                          <Badge tone="blue">Working</Badge>
+                          <Badge tone="blue">{t('Working')}</Badge>
                         ) : (
-                          <Badge tone="neutral">Free</Badge>
+                          <Badge tone="neutral">{t('Free')}</Badge>
                         )}
                       </td>
                       <td>
@@ -213,7 +215,7 @@ export function HoursView() {
               disabled={hoursSaving || dirtyWorkers.size === 0}
               onClick={() => void saveHours()}
             >
-              {hoursSaving ? 'Saving…' : 'Save hours'}
+              {hoursSaving ? t('Saving…') : t('Save hours')}
             </button>
           </div>
           {hoursError && (

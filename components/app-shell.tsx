@@ -332,7 +332,7 @@ export function AppShell({ children, title }: { children: ReactNode; title?: str
               className={locale === 'en' ? 'active' : ''}
               onClick={() => setLocale('en')}
             >
-              EN
+              {t('EN')}
             </button>
             <button
               type="button"
@@ -341,7 +341,7 @@ export function AppShell({ children, title }: { children: ReactNode; title?: str
               className={locale === 'nl' ? 'active' : ''}
               onClick={() => setLocale('nl')}
             >
-              NL
+              {t('NL')}
             </button>
           </div>
         </div>

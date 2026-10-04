@@ -16,7 +16,13 @@ function highlight(text: string, query: string) {
   if (!q) return text
   const at = text.toLowerCase().indexOf(q.toLowerCase())
   if (at === -1) return text
-  return <Fragment>{text.slice(0, at)}<mark>{text.slice(at, at + q.length)}</mark>{text.slice(at + q.length)}</Fragment>
+  return (
+    <Fragment>
+      {text.slice(0, at)}
+      <mark>{text.slice(at, at + q.length)}</mark>
+      {text.slice(at + q.length)}
+    </Fragment>
+  )
 }
 
 /* One flat list across three very different record shapes, so the result
@@ -46,7 +52,9 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
 
   useEffect(() => {
     if (!open) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [open, onClose])
@@ -54,16 +62,35 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
   const hits = useMemo<Hit[]>(() => {
     const q = query.trim().toLowerCase()
     if (!q) return []
-    const people: Hit[] = searchPeople(workers, q)
-      .map(w => ({ id: w.id, kind: 'person', title: w.fullName, subtitle: [w.status === 'dismissed' ? 'Dismissed' : null, w.city || 'No city on file'].filter(Boolean).join(' · '), href: `/people/${w.id}` }))
+    const people: Hit[] = searchPeople(workers, q).map(w => ({
+      id: w.id,
+      kind: 'person',
+      title: w.fullName,
+      subtitle: [w.status === 'dismissed' ? 'Dismissed' : null, w.city || 'No city on file']
+        .filter(Boolean)
+        .join(' · '),
+      href: `/people/${w.id}`,
+    }))
     const orgs: Hit[] = companies
       .filter(c => c.name.toLowerCase().includes(q) || c.contactPerson?.toLowerCase().includes(q))
       .slice(0, 6)
-      .map(c => ({ id: c.id, kind: 'company', title: c.name, subtitle: c.contactPerson || 'No contact on file', href: '/companies' }))
+      .map(c => ({
+        id: c.id,
+        kind: 'company',
+        title: c.name,
+        subtitle: c.contactPerson || 'No contact on file',
+        href: '/companies',
+      }))
     const jobs: Hit[] = vacancies
       .filter(v => v.title.toLowerCase().includes(q) || v.address.toLowerCase().includes(q))
       .slice(0, 6)
-      .map(v => ({ id: v.id, kind: 'vacancy', title: v.title, subtitle: v.address, href: `/vacancies/${v.id}` }))
+      .map(v => ({
+        id: v.id,
+        kind: 'vacancy',
+        title: v.title,
+        subtitle: v.address,
+        href: `/vacancies/${v.id}`,
+      }))
     return [...people, ...orgs, ...jobs]
   }, [companies, query, vacancies, workers])
 
@@ -74,13 +101,26 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
       <div className="dialog dialog-wide search-dialog" onClick={e => e.stopPropagation()}>
         <div className="search-input-row">
           <Search />
-          <input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && hits[0]) onClose() }}
-            placeholder={t('Search people (including dismissed), companies, vacancies…')} aria-label={t('Search everything, including dismissed people')} />
-          <button className="icon-button" onClick={onClose} aria-label={t('Close search')}><X /></button>
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && hits[0]) onClose()
+            }}
+            placeholder={t('Search people (including dismissed), companies, vacancies…')}
+            aria-label={t('Search everything, including dismissed people')}
+          />
+          <button className="icon-button" onClick={onClose} aria-label={t('Close search')}>
+            <X />
+          </button>
         </div>
-        {!query.trim() && <p className="search-empty">{t('Start typing to search people, companies and vacancies.')}</p>}
-        {query.trim() && !hits.length && <p className="search-empty">{t('Nothing matches “{query}”.', { query })}</p>}
+        {!query.trim() && (
+          <p className="search-empty">{t('Start typing to search people, companies and vacancies.')}</p>
+        )}
+        {query.trim() && !hits.length && (
+          <p className="search-empty">{t('Nothing matches “{query}”.', { query })}</p>
+        )}
         {hits.length > 0 && (
           <ul className="search-results">
             {hits.map(hit => {
@@ -88,9 +128,16 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
               return (
                 <li key={`${hit.kind}-${hit.id}`}>
                   <Link href={hit.href} onClick={onClose} className="search-result-row">
-                    <span className={`vacancy-icon icon-${KIND_TONE[hit.kind]}`}><Icon /></span>
-                    <span className="search-result-text"><strong>{highlight(hit.title, query)}</strong><small>{highlight(hit.subtitle, query)}</small></span>
-                    <span className={`badge badge-${KIND_TONE[hit.kind]}`}>{t(hit.kind === 'person' ? 'Person' : hit.kind === 'company' ? 'Company' : 'Vacancy')}</span>
+                    <span className={`vacancy-icon icon-${KIND_TONE[hit.kind]}`}>
+                      <Icon />
+                    </span>
+                    <span className="search-result-text">
+                      <strong>{highlight(hit.title, query)}</strong>
+                      <small>{highlight(hit.subtitle, query)}</small>
+                    </span>
+                    <span className={`badge badge-${KIND_TONE[hit.kind]}`}>
+                      {t(hit.kind === 'person' ? 'Person' : hit.kind === 'company' ? 'Company' : 'Vacancy')}
+                    </span>
                   </Link>
                 </li>
               )

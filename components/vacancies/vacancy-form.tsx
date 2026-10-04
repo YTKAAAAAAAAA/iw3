@@ -1,5 +1,6 @@
 'use client'
 
+import { useLanguage } from '@/lib/i18n'
 import { AppShell, PageHeading, Panel } from '@/components/app-shell'
 import type { VacancyDraft } from '@/components/vacancies/vacancy-draft'
 import { VacancyFields } from '@/components/vacancies/vacancy-fields'
@@ -10,6 +11,7 @@ import { useState } from 'react'
 import { useToday } from '@/lib/today'
 
 export function VacancyForm() {
+  const { t } = useLanguage()
   const today = useToday()
   const router = useRouter()
   const { companies } = useWorkforceData()
@@ -133,7 +135,7 @@ export function VacancyForm() {
     <AppShell title="Create vacancy">
       <div className="content-inner">
         <div className="back-link">
-          <Link href="/vacancies">← Back to vacancies</Link>
+          <Link href="/vacancies">{t('← Back to vacancies')}</Link>
         </div>
         <PageHeading
           eyebrow="Assignments"
@@ -149,10 +151,10 @@ export function VacancyForm() {
           )}
           <div className="form-footer">
             <Link href="/vacancies" className="button button-secondary">
-              Cancel
+              {t('Cancel')}
             </Link>
             <button className="button button-primary" disabled={saving || !companies.length} onClick={create}>
-              {saving ? 'Creating…' : 'Create vacancy'}
+              {saving ? t('Creating…') : t('Create vacancy')}
             </button>
           </div>
         </Panel>
