@@ -38,7 +38,7 @@ function GlobeField() {
 /** The whole lockup: INTERNATIONAL over WORK with the globe as its A. */
 export function Brand({ size = 'small' }: { size?: 'small' | 'large' }) {
   return (
-    <svg className={`brand brand-${size}`} viewBox="21 48 414 140" role="img" aria-label="International Work">
+    <svg className={`brand brand-${size}`} viewBox="21 48 414 140" role="img" aria-label="International@Work">
       <GlobeField />
       <g transform="translate(0,236) scale(0.1,-0.1)" fill="currentColor" stroke="none">
         <path
@@ -217,6 +217,10 @@ export function BrandLockup({ subtitle }: { subtitle?: string }) {
           International<span className="brand-at">@</span>Work
         </strong>
         {subtitle && <small>{subtitle}</small>}
+      </span>
+      {/* Where the full name does not fit (the icon rail) the short form is used. */}
+      <span className="brand-short" aria-hidden="true">
+        I@W
       </span>
     </span>
   )

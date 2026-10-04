@@ -9,6 +9,9 @@ import './globals.css'
 export const metadata: Metadata = {
   title: 'International@Work · Dispatcher',
   description: 'Company-wide scheduling and workforce operations across International@Work vacancies.',
+  // Home-screen and app-switcher labels have room for the short form only.
+  applicationName: 'I@W Dispatcher',
+  appleWebApp: { title: 'I@W' },
   icons: { icon: [{ url: '/icon.svg', type: 'image/svg+xml' }] },
 }
 

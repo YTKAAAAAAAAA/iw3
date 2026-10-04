@@ -309,6 +309,9 @@ select:focus-visible {
   color: var(--brand-blue);
   font-size: inherit;
 }
+.brand-short {
+  display: none;
+}
 .brand-name small {
   color: var(--muted-foreground);
   font-size: 11px;
@@ -1999,6 +2002,17 @@ fieldset label {
   .brand-name {
     display: none;
   }
+  .brand-lockup {
+    flex-direction: column;
+    gap: 4px;
+  }
+  .brand-row .brand-short {
+    display: block;
+    color: var(--foreground);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
   .sidebar-hide {
     display: none;
   }
@@ -2092,6 +2106,13 @@ fieldset label {
   }
   .brand-name {
     display: flex;
+  }
+  .brand-lockup {
+    flex-direction: row;
+    gap: 10px;
+  }
+  .brand-row .brand-short {
+    display: none;
   }
   .sidebar-hide {
     display: inline-grid;
