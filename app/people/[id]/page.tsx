@@ -12,7 +12,10 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   if (!/^[1-9]\d*$/.test(id)) notFound()
   const workerId = Number(id)
   if (!Number.isSafeInteger(workerId) || workerId > 2_147_483_647) notFound()
-  const data = await getPageWorkforceData()
+  const data = await getPageWorkforceData({
+    include: ['schedule', 'leaves', 'hours'],
+    personalDetailsFor: String(workerId),
+  })
   const person = data.workers.find(worker => worker.id === String(workerId))
   if (!person) notFound()
   return <WorkforceDataProvider data={data}><PersonView id={person.id} /></WorkforceDataProvider>

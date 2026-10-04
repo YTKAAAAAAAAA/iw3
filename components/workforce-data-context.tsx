@@ -1,13 +1,27 @@
 'use client'
 
 import { createContext, useContext, type ReactNode } from 'react'
-import type { AppData, Demand, ManatalCandidate, Offer } from '@/lib/types'
+import type { AppData, Demand, HomeArea, Offer, PersonalDetails, TravelDistance } from '@/lib/types'
+
+/** What a page can ask for on top of the base data (people, companies,
+ *  vacancies and sync status). Each page loads only the parts it shows, so
+ *  schedule history and personal details are not sent where they are unused. */
+export const WORKFORCE_PARTS = ['schedule', 'leaves', 'hours', 'travel'] as const
+export type WorkforcePart = (typeof WORKFORCE_PARTS)[number]
+
+export type WorkforceScope = {
+  include?: WorkforcePart[]
+  /** Contact and identity details are loaded for this one worker only. */
+  personalDetailsFor?: string
+}
 
 export type WorkforceData = AppData & {
   demand: Demand[]
   offers: Offer[]
-  manatalCandidates: ManatalCandidate[]
   candidateVisibility: CandidateVisibility[]
+  travel: TravelDistance[]
+  homeAreas: HomeArea[]
+  personalDetails: PersonalDetails | null
 }
 
 export type CandidateVisibility = {

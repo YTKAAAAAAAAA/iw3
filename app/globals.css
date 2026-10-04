@@ -277,6 +277,45 @@ select:focus-visible {
 .brand-large {
   height: 48px;
 }
+/* Globe mark plus the name as real text: readable at sidebar size and in
+   both themes (components/logo.tsx → BrandLockup). */
+.brand-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: var(--brand-blue);
+}
+.brand-mark {
+  flex: none;
+  width: auto;
+  height: 36px;
+}
+.brand-name {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.brand-name strong {
+  color: var(--foreground);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+.brand-name .brand-at {
+  color: var(--brand-blue);
+  font-size: inherit;
+}
+.brand-name small {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
 .icon-button {
   display: inline-grid;
   place-items: center;
@@ -1680,13 +1719,10 @@ fieldset label {
 .sync-grid .panel {
   padding-bottom: 16px;
 }
-.sync-grid .button {
-  margin-left: 20px;
-}
 .sync-meta {
   display: flex;
   justify-content: space-between;
-  margin: 0 20px 16px;
+  gap: 12px;
 }
 .sync-result {
   display: flex;
@@ -1960,6 +1996,9 @@ fieldset label {
     justify-content: center;
     padding-inline: 0;
   }
+  .brand-name {
+    display: none;
+  }
   .sidebar-hide {
     display: none;
   }
@@ -2050,6 +2089,9 @@ fieldset label {
   .brand-row {
     justify-content: flex-start;
     padding-inline: var(--space-3);
+  }
+  .brand-name {
+    display: flex;
   }
   .sidebar-hide {
     display: inline-grid;
@@ -4576,4 +4618,152 @@ body,
 .sidebar-bottom form .nav-item {
   width: 100%;
   text-align: left;
+}
+
+/* ==================================================================
+   Interface fixes, October 2026.
+   ================================================================== */
+
+/* Native controls — date pickers, select menus, scrollbars — follow the app
+   theme. Without this the calendar icon in a date field was drawn black on
+   the dark theme's near-black field. */
+:root {
+  color-scheme: light;
+}
+.theme-dark {
+  color-scheme: dark;
+}
+
+/* A disabled control has to look unavailable, not just ignore the click. */
+.button:disabled,
+.icon-button:disabled,
+.text-button:disabled,
+.sync-button:disabled,
+.seg button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.button-primary:disabled:hover {
+  border-color: var(--primary);
+  background: var(--primary);
+}
+.button-secondary:disabled:hover {
+  background: var(--card);
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.panel-empty {
+  padding: 16px 20px 20px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+/* People list: the name is what the eye looks for, so it is the strongest
+   text in the row instead of inheriting the muted 11px detail style. */
+.person-cell strong {
+  color: var(--foreground);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: normal;
+}
+.person-cell small {
+  font-size: 12px;
+}
+@media (max-width: 640px) {
+  /* One card per person instead of a table that scrolls sideways. */
+  .people-table thead {
+    display: none;
+  }
+  .people-table,
+  .people-table tbody {
+    display: block;
+  }
+  .people-table tr {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 14px 16px;
+    border-top: 1px solid var(--border);
+  }
+  .people-table td {
+    display: block;
+    padding: 0;
+    border: 0;
+  }
+  .people-table .people-state {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+  }
+  .people-table .people-open {
+    display: none;
+  }
+  .people-table .person-cell {
+    min-width: 0;
+    min-height: 44px;
+  }
+  .people-table .person-cell strong {
+    font-size: 16px;
+  }
+  .table-wrap:has(.people-table) {
+    overflow-x: visible;
+  }
+}
+
+/* Vacancy detail: address, dates and hours sit with the status, on the
+   right of the title, instead of floating in a block of their own. */
+.vacancy-detail-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  text-align: right;
+}
+.vacancy-detail-meta > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.vacancy-detail-meta svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+@media (max-width: 640px) {
+  .page-heading:has(.vacancy-detail-meta) {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .vacancy-detail-meta {
+    align-items: flex-start;
+    text-align: left;
+  }
+}
+
+/* Sync sources: everything inside a card shares the card's inner edge. */
+.sync-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 20px 4px;
+}
+.sync-body .field-hint {
+  margin: 0;
+}
+
+/* Error and not-found pages reuse the sign-in card. */
+.status-card h1 {
+  margin-top: 0;
+}
+.status-card code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
 }

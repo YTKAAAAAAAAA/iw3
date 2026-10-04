@@ -7,7 +7,6 @@ import { VacancyFields } from '@/components/vacancies/vacancy-fields'
 import { VacancySchedule } from '@/components/vacancy-schedule'
 import { useWorkforceData } from '@/components/workforce-data-context'
 import { describeSchedule, vacancyStatus } from '@/lib/derive'
-import { FEATURES } from '@/lib/features'
 import { useLanguage } from '@/lib/i18n'
 import { formatDate } from '@/lib/types'
 import { CalendarDays, MapPin } from 'lucide-react'
@@ -178,24 +177,26 @@ export function VacancyView({ id }: { id: string }) {
         <PageHeading
           eyebrow="Vacancy detail"
           title={v.title}
-          description={`${companies.find(c => c.id === v.companyId)?.name} · ${v.address}`}
+          description={companies.find(c => c.id === v.companyId)?.name ?? ''}
           action={
-            <Badge tone={status === 'archived' ? 'neutral' : status === 'open' ? 'orange' : 'green'}>
-              {status.replace('_', ' ')}
-            </Badge>
+            <div className="vacancy-detail-meta">
+              <Badge tone={status === 'archived' ? 'neutral' : status === 'open' ? 'orange' : 'green'}>
+                {t(status === 'in_progress' ? 'In progress' : status === 'open' ? 'Open' : 'Archived')}
+              </Badge>
+              {v.address && (
+                <span>
+                  <MapPin />
+                  {v.address}
+                </span>
+              )}
+              <span>
+                <CalendarDays />
+                {formatDate(v.startDate)} – {v.endDate ? formatDate(v.endDate) : t('Open-ended')}
+              </span>
+              <span>{t(v.trackHoursManually ? 'Hours tracked manually' : 'Hours not tracked manually')}</span>
+            </div>
           }
         />
-        <div className="vacancy-meta">
-          <span>
-            <MapPin />
-            {v.address}
-          </span>
-          <span>
-            <CalendarDays />
-            {formatDate(v.startDate)} – {v.endDate ? formatDate(v.endDate) : 'Open-ended'}
-          </span>
-          <span>{v.trackHoursManually ? 'Hours tracked manually' : 'Hours not tracked manually'}</span>
-        </div>
 
         <Panel className="full-panel">
           <div className="panel-header">
@@ -286,21 +287,19 @@ export function VacancyView({ id }: { id: string }) {
           )}
         </Panel>
 
-        {FEATURES.schedulePattern && (
-          <Panel className="full-panel">
-            <div className="panel-header">
-              <div>
-                <h2>Schedule</h2>
-                <p>How this object is normally staffed.</p>
-              </div>
+        <Panel className="full-panel">
+          <div className="panel-header">
+            <div>
+              <h2>Schedule</h2>
+              <p>How this object is normally staffed.</p>
             </div>
-            <ul className="schedule-lines">
-              {describeSchedule(v).map(line => (
-                <li key={line}>{line}</li>
-              ))}
-            </ul>
-          </Panel>
-        )}
+          </div>
+          <ul className="schedule-lines">
+            {describeSchedule(v).map(line => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </Panel>
 
         {/* People and days live in one place. There is no separate "assign person"
     any more: a schedule already says who works when, and a replacement is

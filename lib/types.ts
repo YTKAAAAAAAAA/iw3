@@ -10,7 +10,47 @@ export type ISODateTime = string
  *  `hasVog` records whether a Verklaring Omtrent het Gedrag is on file. Some
  *  clients will not let anybody on site without one, so the office needs the
  *  answer on the person rather than buried in a document folder. */
-export type Worker = { id:string; flexpediaId:number|null; manatalCandidateId:number|null; initials:string; firstName:string; insertion:string|null; lastName:string; fullName:string; gender:'m'|'f'|null; birthDate:ISODate|null; street:string|null; streetNumber:string|null; streetNumberAddition:string|null; postCode:string|null; city:string|null; residenceCountry:string|null; nationality:string|null; phone:string|null; phoneCountry:string|null; mobile:string|null; email:string; lat:number|null; lon:number|null; geocodedAt:ISODateTime|null; notes:string; hasCar:boolean|null; hasVog:boolean|null; courseDays:Weekday[]; status:'active'|'dismissed'; dismissedAt:ISODate|null; companyAccess:string[]; manatalLink:'linked'|'not_found'|'ambiguous'; cvUrl:string|null }
+export type Worker = {
+  id: string
+  flexpediaId: number | null
+  initials: string
+  firstName: string
+  insertion: string | null
+  lastName: string
+  fullName: string
+  /** Town only — enough to plan travel, not enough to find the house. */
+  city: string | null
+  hasCar: boolean | null
+  hasVog: boolean | null
+  courseDays: Weekday[]
+  status: 'active' | 'dismissed'
+  dismissedAt: ISODate | null
+  companyAccess: string[]
+}
+/** Contact and identity details. Loaded only on the person's own profile page,
+ *  never in the lists that every page carries. */
+export type PersonalDetails = {
+  workerId: string
+  gender: 'm' | 'f' | null
+  birthDate: ISODate | null
+  street: string | null
+  streetNumber: string | null
+  streetNumberAddition: string | null
+  postCode: string | null
+  residenceCountry: string | null
+  nationality: string | null
+  phone: string | null
+  phoneCountry: string | null
+  mobile: string | null
+  email: string | null
+  notes: string
+}
+/** Road distance from a worker's home to a vacancy, computed once per address
+ *  pair on the server and frozen (see db/migrations/001_travel_distances.sql). */
+export type TravelDistance = { workerId: string; vacancyId: string; km: number; minutes: number; computedAt: ISODateTime; profile: string }
+/** Where a worker lives, rounded to about a kilometre: enough for the map,
+ *  not an address. */
+export type HomeArea = { workerId: string; lat: number; lon: number }
 export type Company = { id:string; name:string; contactPerson:string|null; phone:string|null; notes:string|null; logoUrl:string|null }
 /** A hall or site inside a vacancy — Slego, Conakryweg. Added and removed by
  *  hand as the client opens and closes them. */
@@ -178,7 +218,7 @@ export type Demand = {
 }
 export type Leave = { id:string; workerId:string; date:ISODate; reason:string; paidLeave:boolean }
 export type HoursEntry = { id:string; workerId:string; vacancyId:string; date:ISODate; hours:number; manual?:boolean }
-export type SyncState = { source:'flexpedia'|'manatal'; lastSyncAt:ISODateTime|null; status:'idle'|'running'|'error'; error:string|null }
+export type SyncStatus = { source:'supabase'|'flexpedia'; configured:boolean; enabled:boolean; lastSyncAt:ISODateTime|null; lastError:string|null }
 export type DayState = 'working'|'leave'|'free'
 export function todayInAmsterdam(now = new Date()): ISODate {
   const parts = new Intl.DateTimeFormat('en-GB', {
@@ -190,18 +230,31 @@ export function todayInAmsterdam(now = new Date()): ISODate {
   const values = Object.fromEntries(parts.map(part => [part.type, part.value]))
   return `${values.year}-${values.month}-${values.day}`
 }
-export const ACTIVE_STATUSES = ['active'] as const
-export const WORKER_TONES = ['blue','green','orange','purple','teal'] as const
-export type RoadDistance = { km:number; minutes:number }
 export type AssignmentInfo = { vacancyId:string; placeId:string|null; section:string|null; assignmentId:string }
-export type SyncResult = { source:SyncState['source']; added:number; updated:number; missingWorkerIds:string[] }
-export type ManatalCandidate = { id:number; name:string; email:string }
-export type AppData = { workers:Worker[]; companies:Company[]; vacancies:Vacancy[]; standing:StandingAssignment[]; roster:RosterEntry[]; leaves:Leave[]; hours:HoursEntry[]; sync:SyncState[] }
+export type AppData = { workers:Worker[]; companies:Company[]; vacancies:Vacancy[]; standing:StandingAssignment[]; roster:RosterEntry[]; leaves:Leave[]; hours:HoursEntry[]; sync:SyncStatus[] }
 export const isoDate = (date: Date) => date.toISOString().slice(0,10)
 export const addDays = (date: ISODate, amount:number) => { const d = new Date(`${date}T12:00:00Z`); d.setUTCDate(d.getUTCDate()+amount); return isoDate(d) }
-export const formatDate = (value: ISODate | ISODateTime | null) => value ? new Intl.DateTimeFormat('en-GB',{day:'numeric',month:'short',year:'numeric'}).format(new Date(value.includes('T') ? value : `${value}T12:00:00`)) : '—'
+/** Every date in the app is written one way: 04.10.2026, the European
+ *  numeric form. Timestamps are shown as the Amsterdam calendar date. */
+export const formatDate = (value: ISODate | ISODateTime | null) => {
+  if (!value) return '—'
+  const [year, month, day] = (value.includes('T') ? todayInAmsterdam(new Date(value)) : value.slice(0, 10)).split('-')
+  return `${day}.${month}.${year}`
+}
+/** 04.10 — for day columns where the year is already on screen. */
+export const formatShortDate = (value: ISODate) => formatDate(value).slice(0, 5)
+/** 04.10.2026 14:05 in Amsterdam time, on a 24-hour clock. */
+export const formatDateTime = (value: ISODateTime | null) => {
+  if (!value) return '—'
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Amsterdam', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(new Date(value)).map(part => [part.type, part.value]))
+  return `${parts.day}.${parts.month}.${parts.year} ${parts.hour}:${parts.minute}`
+}
+/** 14:05 in Amsterdam time. */
+export const formatTimeOfDay = (value: ISODateTime) => formatDateTime(value).slice(11)
 export const initialsFor = (name:string) => name.split(' ').map(p=>p[0]).slice(0,2).join('').toUpperCase()
-export const avatarTone = (index:number) => WORKER_TONES[index % WORKER_TONES.length]
 export const companyById = (companies:Company[], id:string) => companies.find(c=>c.id===id)
 export const workerById = (workers:Worker[], id:string) => workers.find(w=>w.id===id)
 export const vacancyById = (vacancies:Vacancy[], id:string) => vacancies.find(v=>v.id===id)
@@ -252,3 +305,8 @@ export type Offer = {
   note:string|null
   at:ISODateTime
 }
+
+/** "Amsterdam · jan@example.com", skipping whatever is missing, so a person
+ *  without a city never shows a stray "null ·" or a dangling separator. */
+export const joinDetails = (...parts: Array<string | number | null | undefined | false>) =>
+  parts.filter(part => part !== null && part !== undefined && part !== false && part !== '').join(' · ')

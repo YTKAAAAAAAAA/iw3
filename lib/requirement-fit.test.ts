@@ -4,12 +4,9 @@ import { assessRequirements } from './requirement-fit.ts'
 import type { Requirement, Worker } from './types.ts'
 
 const worker: Worker = {
-  id: 'w-1', flexpediaId: null, manatalCandidateId: null, initials: 'AB', firstName: 'A',
-  insertion: null, lastName: 'B', fullName: 'A B', gender: null, birthDate: null,
-  street: null, streetNumber: null, streetNumberAddition: null, postCode: null, city: null,
-  residenceCountry: null, nationality: null, phone: null, phoneCountry: null, mobile: null,
-  email: '', lat: null, lon: null, geocodedAt: null, notes: '', hasCar: false, hasVog: true,
-  courseDays: [], status: 'active', dismissedAt: null, companyAccess: [], manatalLink: 'linked', cvUrl: null,
+  id: 'w-1', flexpediaId: null, initials: 'AB', firstName: 'A',
+  insertion: null, lastName: 'B', fullName: 'A B', city: null, hasCar: false, hasVog: true,
+  courseDays: [], status: 'active', dismissedAt: null, companyAccess: [],
 }
 
 const requirement = (kind: Requirement['kind'], label: string, required = true): Requirement =>

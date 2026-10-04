@@ -24,7 +24,7 @@ import {
 } from 'lucide-react'
 import { formatDate, parseClock } from '@/lib/types'
 import type { ReactNode } from 'react'
-import { Brand } from './logo'
+import { BrandLockup } from './logo'
 import { SearchDialog } from './search-dialog'
 import { logout } from '@/lib/auth/actions'
 import { useLanguage } from '@/lib/i18n'
@@ -282,7 +282,7 @@ export function AppShell({ children, title }: { children: ReactNode; title?: str
     <div className={`app-shell ${collapsed ? 'sidebar-collapsed' : ''}`}>
       <aside className={`sidebar ${mobile ? 'open' : ''} ${collapsed ? 'collapsed' : ''}`}>
         <div className="brand-row">
-          <Brand />
+          <BrandLockup subtitle={t('Dispatcher')} />
           <button
             className="icon-button sidebar-hide"
             onClick={() => {

@@ -3,11 +3,12 @@
 import { AppShell, Badge, PageHeading, Panel } from '@/components/app-shell'
 import { PeopleTable } from '@/components/people/people-table'
 import { useWorkforceData } from '@/components/workforce-data-context'
-import { availableWorkers, dayStatus, vacancyStatus } from '@/lib/derive'
+import { availableWorkers, dayStatus, upcomingAbsences, vacancyStatus } from '@/lib/derive'
+import { useLanguage } from '@/lib/i18n'
+import { useToday } from '@/lib/today'
 import { formatDate } from '@/lib/types'
 import { ArrowUpRight, CalendarDays, Plus } from 'lucide-react'
 import Link from 'next/link'
-import { useToday } from '@/lib/today'
 
 export function Metric({
   label,
@@ -33,116 +34,133 @@ export function Metric({
     </Link>
   )
 }
+
 export function Overview() {
   const today = useToday()
-  const { workers, companies, roster, leaves, vacancies, standing, hours } = useWorkforceData()
+  const { t, locale } = useLanguage()
+  const { workers, roster, leaves, vacancies, standing } = useWorkforceData()
   const active = workers.filter(w => w.status === 'active')
   const free = availableWorkers(workers, today, roster, leaves, vacancies)
   const open = vacancies.filter(v => vacancyStatus(v, standing, roster, today) === 'open')
-  const leave = workers.filter(w => dayStatus(w.id, today, roster, leaves, vacancies) === 'leave')
+  const onLeave = active.filter(w => dayStatus(w.id, today, roster, leaves, vacancies) === 'leave')
+  const workerById = new Map(workers.map(w => [w.id, w]))
+  const comingUp = upcomingAbsences(leaves, today)
+    .filter(period => workerById.get(period.workerId)?.status === 'active')
+    .slice(0, 4)
+  const weekday = new Intl.DateTimeFormat(locale === 'nl' ? 'nl-NL' : 'en-GB', {
+    weekday: 'long',
+    timeZone: 'Europe/Amsterdam',
+  }).format(new Date(`${today}T12:00:00Z`))
+
   return (
     <AppShell>
       <div className="content-inner">
         <PageHeading
           eyebrow="Workspace"
-          title={new Intl.DateTimeFormat('en-GB', {
-            weekday: 'long',
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric',
-          }).format(new Date(`${today}T12:00:00`))}
+          title={`${weekday.charAt(0).toUpperCase()}${weekday.slice(1)}, ${formatDate(today)}`}
           description="Here’s what’s happening across your workforce today."
           action={
             <Link className="button button-primary" href="/vacancies/new">
               <Plus />
-              Create vacancy
+              {t('Create vacancy')}
             </Link>
           }
         />
         <section className="metrics-grid">
           <Metric
-            label="Open vacancies"
+            label={t('Open vacancies')}
             value={open.length}
-            caption={`${vacancies.length} total vacancies`}
+            caption={t('{count} vacancies in total', { count: vacancies.length })}
             href="/vacancies"
           />
           <Metric
-            label="People available"
+            label={t('People available')}
             value={free.length}
-            caption={`of ${active.length} active people`}
+            caption={t('of {count} active people', { count: active.length })}
             href="/people"
           />
           <Metric
-            label="On leave today"
-            value={leave.length}
-            caption="Leave takes priority over work"
+            label={t('On leave today')}
+            value={onLeave.length}
+            caption={t('Leave takes priority over work')}
             href="/people"
           />
           <Metric
-            label="Total people"
-            value={active.length}
-            caption={`${workers.length - active.length} dismissed workers`}
-            href="/people?status=dismissed"
+            label={t('Total people')}
+            value={workers.length}
+            caption={t('{active} active · {dismissed} dismissed', {
+              active: active.length,
+              dismissed: workers.length - active.length,
+            })}
+            href="/people"
           />
         </section>
         <div className="dashboard-grid">
           <Panel>
             <div className="panel-header">
               <div>
-                <h2>Today’s availability</h2>
-                <p>People ready for assignment</p>
+                <h2>{t('Today’s availability')}</h2>
+                <p>{t('People ready for assignment')}</p>
               </div>
               <Link className="text-button" href="/people">
-                View people <ArrowUpRight />
+                {t('View people')} <ArrowUpRight />
               </Link>
             </div>
             {free.slice(0, 5).map(w => (
               <Link className="availability-row" href={`/people/${w.id}`} key={w.id}>
                 <div>
                   <strong>{w.fullName}</strong>
-                  <span>{w.city} · Available today</span>
+                  <span>{[w.city, t('Available today')].filter(Boolean).join(' · ')}</span>
                 </div>
                 <Badge tone="green">Free</Badge>
               </Link>
             ))}
+            {!free.length && <p className="panel-empty">{t('Nobody is free today.')}</p>}
           </Panel>
           <Panel>
             <div className="panel-header">
               <div>
-                <h2>Coming up</h2>
-                <p>Leave and roster overview</p>
+                <h2>{t('Coming up')}</h2>
+                <p>{t('Current and upcoming absences')}</p>
               </div>
               <CalendarDays />
             </div>
-            {leaves.slice(0, 4).map(l => {
-              const w = workers.find(x => x.id === l.workerId)
+            {comingUp.map(period => {
+              const w = workerById.get(period.workerId)!
+              const [, month, day] = period.from.split('-')
               return (
-                w && (
-                  <Link className="coming-item" href={`/people/${w.id}`} key={l.id}>
-                    <div className="date-block">
-                      <strong>{l.date.slice(-2)}</strong>
-                      <span>{formatDate(l.date).split(' ')[1]}</span>
-                    </div>
-                    <div>
-                      <strong>{w.fullName}</strong>
-                      <span>
-                        {l.reason} · {formatDate(l.date)}
-                      </span>
-                    </div>
-                  </Link>
-                )
+                <Link
+                  className="coming-item"
+                  href={`/people/${w.id}`}
+                  key={`${period.workerId}-${period.from}-${period.reason}`}
+                >
+                  <div className="date-block" aria-hidden="true">
+                    <strong>{day}</strong>
+                    <span>{month}</span>
+                  </div>
+                  <div>
+                    <strong>{w.fullName}</strong>
+                    <span>
+                      {t(period.reason)} ·{' '}
+                      {period.from === period.to
+                        ? formatDate(period.from)
+                        : `${formatDate(period.from)} – ${formatDate(period.to)}`}
+                    </span>
+                  </div>
+                </Link>
               )
             })}
+            {!comingUp.length && <p className="panel-empty">{t('No absences planned.')}</p>}
           </Panel>
         </div>
         <Panel className="people-preview">
           <div className="panel-header">
             <div>
-              <h2>People</h2>
-              <p>Recently active and available workers</p>
+              <h2>{t('People')}</h2>
+              <p>{t('Recently active and available workers')}</p>
             </div>
             <Link className="text-button" href="/people">
-              View all people <ArrowUpRight />
+              {t('View all people')} <ArrowUpRight />
             </Link>
           </div>
           <PeopleTable compact />

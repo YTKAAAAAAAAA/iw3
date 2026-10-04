@@ -2,6 +2,14 @@ import { type PickedAddress } from '@/components/address-picker'
 import { timingOf } from '@/lib/derive'
 import type { Requirement, Vacancy, VacancyPlace, Weekday } from '@/lib/types'
 
+/* ------------------------------------------------------------------
+   One form for a vacancy, used both to create one and to edit one.
+
+   Two separate forms drift: a field added to creation quietly goes missing
+   from editing, and the office finds out when a client asks for a change
+   nobody can make. So there is one set of fields and one draft shape, and
+   both screens render it.
+   ------------------------------------------------------------------ */
 export type VacancyDraft = {
   title: string
   companyId: string

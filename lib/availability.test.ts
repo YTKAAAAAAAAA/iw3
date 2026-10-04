@@ -4,12 +4,9 @@ import { alreadyOnVacancy, availabilityLabel, availabilityOver, blockOn, isCours
 import type { Leave, RosterEntry, Worker } from './types.ts'
 
 const worker = (over: Partial<Worker> = {}): Worker => ({
-  id: 'w-1', flexpediaId: null, manatalCandidateId: null, initials: 'XX', firstName: 'Jan', insertion: null,
-  lastName: 'Bakker', fullName: 'Jan Bakker', gender: null, birthDate: null, street: null, streetNumber: null,
-  streetNumberAddition: null, postCode: null, city: null, residenceCountry: null, nationality: null, phone: null,
-  phoneCountry: null, mobile: null, email: 'j@example.com', lat: null, lon: null, geocodedAt: null, notes: '',
-  hasCar: true, hasVog: true, courseDays: [], status: 'active', dismissedAt: null, companyAccess: [], manatalLink: 'linked',
-  cvUrl: null, ...over,
+  id: 'w-1', flexpediaId: null, initials: 'XX', firstName: 'Jan', insertion: null,
+  lastName: 'Bakker', fullName: 'Jan Bakker', city: null,
+  hasCar: true, hasVog: true, courseDays: [], status: 'active', dismissedAt: null, companyAccess: [], ...over,
 })
 const shift = (vacancyId: string, date: string, workerId: string | null, outcome: RosterEntry['outcome'] = 'planned'): RosterEntry => ({
   id: `r-${vacancyId}-${date}`, vacancyId, date, placeId: null, section: null, workerId, extra: false,
@@ -59,7 +56,7 @@ test('busy at the start reports the day they come free, not just "busy"', () => 
   const a = availabilityOver(worker(), WEEK, 'v-1', roster, [])
   assert.equal(a.freeFrom, '2024-06-19')
   assert.equal(a.free.length, 3)
-  assert.match(availabilityLabel(a), /^Free from 19 Jun 2024 · 2 of 5 taken \(2 on other work\)$/)
+  assert.match(availabilityLabel(a), /^Free from 19\.06\.2024 · 2 of 5 taken \(2 on other work\)$/)
 })
 
 test('a gap in the middle means there is no day to be free from', () => {

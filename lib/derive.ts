@@ -188,7 +188,7 @@ export function availableWorkers(workers:Worker[], date:ISODate, roster:RosterEn
    ------------------------------------------------------------------ */
 import type { ShiftOutcome } from './types.ts'
 import { minutesOf } from './types.ts'
-import { formatDate, weekdayOf as weekdayOfDate } from './types.ts'
+import { addDays, formatDate, weekdayOf as weekdayOfDate } from './types.ts'
 
 /** A shift stops counting as coverage once it is cancelled or nobody came. */
 const COUNTS_AS_COVER: ShiftOutcome[] = ['planned', 'confirmed', 'worked', 'left_early']
@@ -417,4 +417,24 @@ export function describeSchedule(vacancy: VacancyType): string[] {
 
   lines.push(vacancy.places.length ? `Places: ${vacancy.places.map(p => p.name).join(' · ')} — sections inside them are typed per day` : 'Places: none — the site is ordered as a whole')
   return lines
+}
+
+export type AbsencePeriod = { workerId: string; from: ISODate; to: ISODate; reason: string }
+
+/** Absences that are still running or lie ahead, soonest first. Leave is
+ *  stored one row per day, so consecutive days of the same person and reason
+ *  are joined back into the period somebody actually booked. */
+export function upcomingAbsences(leaves: Leave[], today: ISODate): AbsencePeriod[] {
+  const sorted = [...leaves].sort((a, b) =>
+    a.workerId.localeCompare(b.workerId) || a.reason.localeCompare(b.reason) || a.date.localeCompare(b.date))
+  const periods: AbsencePeriod[] = []
+  for (const leave of sorted) {
+    const last = periods[periods.length - 1]
+    if (last && last.workerId === leave.workerId && last.reason === leave.reason && addDays(last.to, 1) === leave.date) {
+      last.to = leave.date
+    } else {
+      periods.push({ workerId: leave.workerId, from: leave.date, to: leave.date, reason: leave.reason })
+    }
+  }
+  return periods.filter(period => period.to >= today).sort((a, b) => a.from.localeCompare(b.from))
 }

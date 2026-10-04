@@ -157,3 +157,22 @@ m-190 148 c3 -120 2 -122 -17 -110 -32 20 -42 102 -19 153 9 21 9 31 0 46 -15
     </svg>
   )
 }
+
+/** The sidebar and dialog lockup. The traced wordmark is a thin condensed
+ *  face whose strokes drop below a pixel at sidebar size, so the name is set
+ *  as real text beside the globe instead: it stays crisp at any zoom, follows
+ *  the theme, and the globe keeps the brand recognisable. The full wordmark
+ *  is used where it is shown large. */
+export function BrandLockup({ subtitle }: { subtitle?: string }) {
+  return (
+    <span className="brand-lockup">
+      <BrandMark />
+      <span className="brand-name">
+        <strong>
+          International<span className="brand-at">@</span>Work
+        </strong>
+        {subtitle && <small>{subtitle}</small>}
+      </span>
+    </span>
+  )
+}

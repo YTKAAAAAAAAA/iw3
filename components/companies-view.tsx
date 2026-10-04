@@ -3,6 +3,7 @@
 import { AppShell, PageHeading, Panel, useExit } from '@/components/app-shell'
 import { useWorkforceData } from '@/components/workforce-data-context'
 import type { Company } from '@/lib/types'
+import { joinDetails } from '@/lib/types'
 import { ArrowUpRight, Plus, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
@@ -139,7 +140,7 @@ export function CompaniesView() {
                 <div>
                   <h2>{c.name}</h2>
                   <p>
-                    {c.contactPerson} · {c.phone}
+                    {joinDetails(c.contactPerson, c.phone)}
                   </p>
                   <strong>
                     {workers.filter(w => w.status === 'active' && w.companyAccess.includes(c.id)).length}{' '}

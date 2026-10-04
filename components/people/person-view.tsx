@@ -3,22 +3,27 @@
 import { AppShell, Badge, PageHeading, Panel } from '@/components/app-shell'
 import { Calendar } from '@/components/people/worker-calendar'
 import { useWorkforceData } from '@/components/workforce-data-context'
-import type { Worker } from '@/lib/types'
-import { formatDate, weekdayLabel, WEEKDAYS } from '@/lib/types'
-import { ArrowUpRight, CircleAlert, MapPin } from 'lucide-react'
+import { useLanguage } from '@/lib/i18n'
+import type { PersonalDetails, Worker } from '@/lib/types'
+import { formatDate, joinDetails, weekdayLabel, WEEKDAYS } from '@/lib/types'
+import { CircleAlert, MapPin } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
 export function PersonView({ id }: { id: string }) {
   const router = useRouter()
-  const { workers, companies, manatalCandidates, roster, vacancies, hours } = useWorkforceData()
+  const { workers, companies, personalDetails } = useWorkforceData()
+  const { t } = useLanguage()
   const w = workers.find(x => x.id === id) || workers[0]
-  const [notes, setNotes] = useState(w?.notes ?? '')
+  const details = personalDetails?.workerId === w.id ? personalDetails : null
+  const [notes, setNotes] = useState(details?.notes ?? '')
   const [access, setAccess] = useState(w?.companyAccess ?? [])
   const [accessError, setAccessError] = useState('')
   const [profileSaving, setProfileSaving] = useState(false)
-  const saveProfile = async (update: Partial<Pick<Worker, 'notes' | 'hasCar' | 'hasVog' | 'courseDays'>>) => {
+  const saveProfile = async (
+    update: Partial<Pick<Worker, 'hasCar' | 'hasVog' | 'courseDays'> & Pick<PersonalDetails, 'notes'>>,
+  ) => {
     setProfileSaving(true)
     setAccessError('')
     try {
@@ -99,21 +104,27 @@ export function PersonView({ id }: { id: string }) {
     <AppShell title="Person">
       <div className="content-inner">
         <div className="back-link">
-          <Link href="/people">← Back to people</Link>
+          <Link href="/people">← {t('Back to people')}</Link>
         </div>
         {w.status === 'dismissed' && (
           <div className="dismissed-banner">
             <CircleAlert />
             <span>
-              Dismissed on {formatDate(w.dismissedAt)}. This record is read-only except internal notes.
+              {t('Dismissed on {date}. This record is read-only except internal notes.', {
+                date: formatDate(w.dismissedAt),
+              })}
             </span>
           </div>
         )}
         <PageHeading
           eyebrow="Worker profile"
           title={w.fullName}
-          description={`${w.city} · ${w.email}`}
-          action={<Badge tone={w.status === 'active' ? 'green' : 'neutral'}>{w.status}</Badge>}
+          description={joinDetails(w.city, details?.email)}
+          action={
+            <Badge tone={w.status === 'active' ? 'green' : 'neutral'}>
+              {t(w.status === 'active' ? 'Active' : 'Dismissed')}
+            </Badge>
+          }
         />
         <div className="profile-grid">
           <div className="profile-left">
@@ -121,9 +132,7 @@ export function PersonView({ id }: { id: string }) {
               <div className="profile-hero">
                 <div>
                   <h2>{w.fullName}</h2>
-                  <p>
-                    {w.initials} · {w.nationality}
-                  </p>
+                  <p>{joinDetails(w.initials, details?.nationality)}</p>
                 </div>
               </div>
               <div className="detail-grid">
@@ -131,12 +140,20 @@ export function PersonView({ id }: { id: string }) {
                   ['First name', w.firstName],
                   ['Insertion', w.insertion],
                   ['Last name', w.lastName],
-                  ['Gender', w.gender],
-                  ['Birth date', formatDate(w.birthDate)],
-                  ['Address', [w.street, w.streetNumber, w.streetNumberAddition].filter(Boolean).join(' ')],
-                  ['Postcode / city', [w.postCode, w.city].filter(Boolean).join(' · ')],
-                  ['Residence country', w.residenceCountry],
-                  ['Nationality', w.nationality],
+                  ['Gender', details?.gender ? t(details.gender === 'm' ? 'Male' : 'Female') : null],
+                  ['Birth date', details?.birthDate ? formatDate(details.birthDate) : null],
+                  [
+                    'Address',
+                    [
+                      details?.street,
+                      [details?.streetNumber, details?.streetNumberAddition].filter(Boolean).join(''),
+                    ]
+                      .filter(Boolean)
+                      .join(' '),
+                  ],
+                  ['Postcode / city', joinDetails(details?.postCode, w.city)],
+                  ['Residence country', details?.residenceCountry],
+                  ['Nationality', details?.nationality],
                   [
                     'Course days',
                     <div className="seg seg-small course-days" key="course">
@@ -178,7 +195,7 @@ export function PersonView({ id }: { id: string }) {
                             void saveProfile({ hasVog: value })
                           }}
                         >
-                          {label}
+                          {t(label)}
                         </button>
                       ))}
                     </div>,
@@ -202,17 +219,17 @@ export function PersonView({ id }: { id: string }) {
                             void saveProfile({ hasCar: value })
                           }}
                         >
-                          {label}
+                          {t(label)}
                         </button>
                       ))}
                     </div>,
                   ],
-                  ['Phone', w.phone],
-                  ['Mobile', w.mobile],
-                  ['Email', w.email],
+                  ['Phone', details?.phone],
+                  ['Mobile', details?.mobile],
+                  ['Email', details?.email],
                 ].map(([label, value]) => (
                   <div key={label as string}>
-                    <span>{label}</span>
+                    <span>{t(label as string)}</span>
                     {typeof value === 'string' || value === null || value === undefined ? (
                       <strong>{value || '—'}</strong>
                     ) : (
@@ -221,61 +238,27 @@ export function PersonView({ id }: { id: string }) {
                   </div>
                 ))}
               </div>
-              {w.lat === null && (
+              {!details?.street && (
                 <div className="inline-note">
                   <MapPin />
-                  Coordinates are not defined. This person is excluded from distance matching.
-                </div>
-              )}
-              <div className="section-divider" />
-              <div className="panel-header">
-                <div>
-                  <h2>Manatal CV</h2>
-                  <p>Linked resume remains in Manatal; no copy is stored here.</p>
-                </div>
-              </div>
-              {w.manatalLink === 'linked' ? (
-                <div className="match-row">
-                  <a
-                    className="button button-secondary"
-                    href={w.cvUrl || '#'}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Open CV in Manatal <ArrowUpRight />
-                  </a>
-                </div>
-              ) : w.manatalLink === 'not_found' ? (
-                <div className="match-row">
-                  <Badge tone="orange">Not found in Manatal</Badge>
-                  <button className="button button-secondary">Link manually</button>
-                </div>
-              ) : (
-                <div className="match-row">
-                  <Badge tone="orange">Several candidates match this email</Badge>
-                  <select aria-label="Select Manatal candidate">
-                    {manatalCandidates.map(c => (
-                      <option key={c.id}>
-                        {c.name} · {c.email}
-                      </option>
-                    ))}
-                  </select>
-                  <button className="button button-secondary">Link candidate</button>
+                  {t(
+                    'No home address from Flexpedia yet, so travel distances cannot be calculated for this person.',
+                  )}
                 </div>
               )}
             </Panel>
             <Panel>
               <div className="panel-header">
                 <div>
-                  <h2>Internal notes</h2>
-                  <p>Only this field is editable in the worker profile.</p>
+                  <h2>{t('Internal notes')}</h2>
+                  <p>{t('Visible to dispatchers only.')}</p>
                 </div>
               </div>
               <textarea
                 value={notes}
                 onChange={e => setNotes(e.target.value)}
                 disabled={w.status === 'dismissed' || profileSaving}
-                aria-label="Internal notes"
+                aria-label={t('Internal notes')}
               />
               <div className="form-footer">
                 <button
@@ -283,15 +266,15 @@ export function PersonView({ id }: { id: string }) {
                   disabled={w.status === 'dismissed' || profileSaving}
                   onClick={() => void saveProfile({ notes })}
                 >
-                  {profileSaving ? 'Saving…' : 'Save notes'}
+                  {t(profileSaving ? 'Saving…' : 'Save notes')}
                 </button>
               </div>
             </Panel>
             <Panel>
               <div className="panel-header">
                 <div>
-                  <h2>Company access</h2>
-                  <p>Access permits work at company sites; it is not an assignment.</p>
+                  <h2>{t('Company access')}</h2>
+                  <p>{t('Access permits work at company sites; it is not an assignment.')}</p>
                 </div>
               </div>
               {accessError && (

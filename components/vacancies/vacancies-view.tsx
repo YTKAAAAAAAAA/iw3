@@ -5,6 +5,7 @@ import { useWorkforceData } from '@/components/workforce-data-context'
 import { sortByUrgency, urgencyNote, vacancyStatus, vacancyUrgency } from '@/lib/derive'
 import { useLanguage } from '@/lib/i18n'
 import { ArrowUpRight, Briefcase, Plus } from 'lucide-react'
+import { joinDetails } from '@/lib/types'
 import Link from 'next/link'
 import { useState } from 'react'
 import { useToday } from '@/lib/today'
@@ -76,7 +77,7 @@ export function VacanciesView() {
                   <div>
                     <strong>{v.title}</strong>
                     <span>
-                      {companies.find(c => c.id === v.companyId)?.name} · {v.address}
+                      {joinDetails(companies.find(c => c.id === v.companyId)?.name, v.address)}
                     </span>
                   </div>
                   <Badge
@@ -125,12 +126,3 @@ export function VacanciesView() {
     </AppShell>
   )
 }
-
-/* ------------------------------------------------------------------
-   One form for a vacancy, used both to create one and to edit one.
-
-   Two separate forms drift: a field added to creation quietly goes missing
-   from editing, and the office finds out when a client asks for a change
-   nobody can make. So there is one set of fields and one draft shape, and
-   both screens render it.
-   ------------------------------------------------------------------ */

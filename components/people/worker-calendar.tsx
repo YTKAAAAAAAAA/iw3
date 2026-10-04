@@ -9,6 +9,15 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useState } from 'react'
 import { useToday } from '@/lib/today'
 
+/* ------------------------------------------------------------------
+   The worker's month.
+
+   Days are picked, not opened: a holiday is two weeks, not one day, and
+   clicking through fourteen dialogs to enter it is how people stop entering
+   it at all. Tapping a day adds it to the selection, tapping it again takes
+   it out, and shift-clicking fills the span between — then one action covers
+   everything picked. The same selection is what removes leave again.
+   ------------------------------------------------------------------ */
 export function Calendar({ workerId }: { workerId: string }) {
   const today = useToday()
   const { leaves, roster, vacancies } = useWorkforceData()

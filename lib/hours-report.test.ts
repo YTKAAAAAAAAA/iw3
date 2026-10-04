@@ -9,12 +9,9 @@ import type { HoursEntry, RosterEntry, Vacancy, Worker } from './types.ts'
 const WEEK = { year: 2024, week: 25 }
 
 const worker = (id: string, firstName: string, lastName: string, insertion: string | null = null): Worker => ({
-  id, flexpediaId: null, manatalCandidateId: null, initials: 'XX', firstName, insertion, lastName,
-  fullName: [firstName, insertion, lastName].filter(Boolean).join(' '), gender: null, birthDate: null,
-  street: null, streetNumber: null, streetNumberAddition: null, postCode: null, city: null,
-  residenceCountry: null, nationality: null, phone: null, phoneCountry: null, mobile: null,
-  email: `${id}@example.com`, lat: null, lon: null, geocodedAt: null, notes: '', hasCar: true, hasVog: true, courseDays: [],
-  status: 'active', dismissedAt: null, companyAccess: ['c-1'], manatalLink: 'linked', cvUrl: null,
+  id, flexpediaId: null, initials: 'XX', firstName, insertion, lastName,
+  fullName: [firstName, insertion, lastName].filter(Boolean).join(' '), city: null,
+  hasCar: true, hasVog: true, courseDays: [], status: 'active', dismissedAt: null, companyAccess: ['c-1'],
 })
 const shift = (workerId: string, date: string, outcome: RosterEntry['outcome'] = 'planned'): RosterEntry => ({
   id: `r-${workerId}-${date}`, vacancyId: 'v-1', date, placeId: null, section: null, workerId,

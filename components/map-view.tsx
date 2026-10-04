@@ -7,8 +7,8 @@ import { Minus, Plus } from 'lucide-react'
 import { AppShell, Badge, PageHeading, Panel, StateBlock } from './app-shell'
 import { useWorkforceData } from './workforce-data-context'
 import { dayStatus } from '@/lib/derive'
-import { travelFor, withinDrive, TRAVEL_COMPUTED_AT, TRAVEL_PROFILE } from '@/lib/travel'
-import { formatDate } from '@/lib/types'
+import { travelFor, travelIndex, withinDrive } from '@/lib/travel'
+import { formatDate, joinDetails } from '@/lib/types'
 import { useLanguage } from '@/lib/i18n'
 import { useToday } from '@/lib/today'
 
@@ -25,6 +25,10 @@ const stateColour = (state: string) => token(
   state === 'free' ? '#047857' : state === 'leave' ? '#b45309' : '#1d4ed8',
 )
 const STATE_LABEL: Record<string, string> = { free: 'Free', leave: 'On leave', working: 'Working' }
+/* Leaflet tooltips are HTML. Names and addresses come from Flexpedia, Supabase
+   and the vacancy form, so every value is escaped before it is put in one. */
+const escapeHtml = (value: string) =>
+  value.replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]!)
 type Filter = 'all' | 'free' | 'working'
 
 /** The map, usable on its own page or dropped at the bottom of a vacancy.
@@ -33,7 +37,9 @@ type Filter = 'all' | 'free' | 'working'
  *  opening the vacancy you were already looking at. */
 export function MapPanel({ vacancyId }: { vacancyId?: string }) {
   const today = useToday()
-  const { leaves, roster, vacancies, workers } = useWorkforceData()
+  const { leaves, roster, vacancies, workers, travel: distances, homeAreas } = useWorkforceData()
+  const travel = useMemo(() => travelIndex(distances), [distances])
+  const homes = useMemo(() => new Map(homeAreas.map(h => [h.workerId, h])), [homeAreas])
   const { t } = useLanguage()
   const sites = vacancies.filter(v => v.lat !== null && v.lon !== null)
   const [chosen, setChosen] = useState(vacancyId ?? sites[0]?.id ?? '')
@@ -49,7 +55,9 @@ export function MapPanel({ vacancyId }: { vacancyId?: string }) {
   const [selected, setSelected] = useState<string | null>(null)
   const [basemap, setBasemap] = useState<'plain' | 'satellite'>('plain')
 
-  const site = vacancies.find(v => v.id === siteId)!
+  /* A vacancy without coordinates cannot be mapped; on a fresh install that
+     is every vacancy, and the page shows how to fix it instead of failing. */
+  const site = vacancies.find(v => v.id === siteId && v.lat !== null && v.lon !== null)
   /* `workers` is a module constant, so this list never actually changes —
      but recreating the array on every render made every memo downstream of it
      recompute, which re-ran the marker effect, which refitted the map. That is
@@ -65,8 +73,8 @@ export function MapPanel({ vacancyId }: { vacancyId?: string }) {
     [active, filter, carOnly, roster, leaves, vacancies],
   )
   const { inside, outside, unknown } = useMemo(
-    () => withinDrive(pool.map(w => w.id), siteId, radius),
-    [pool, siteId, radius],
+    () => withinDrive(travel, pool.map(w => w.id), siteId, radius),
+    [travel, pool, siteId, radius],
   )
 
   const mapRef = useRef<L.Map | null>(null)
@@ -113,7 +121,7 @@ export function MapPanel({ vacancyId }: { vacancyId?: string }) {
      the user. Selection is handled separately, below. */
   useEffect(() => {
     const map = mapRef.current, layer = layerRef.current
-    if (!map || !layer || site.lat == null || site.lon == null) return
+    if (!map || !layer || !site || site.lat == null || site.lon == null) return
     layer.clearLayers()
     markersRef.current.clear()
 
@@ -123,20 +131,21 @@ export function MapPanel({ vacancyId }: { vacancyId?: string }) {
     const sitePin = L.marker([site.lat, site.lon], {
       icon: L.divIcon({ className: 'site-pin', html: '<span></span>', iconSize: [18, 18], iconAnchor: [9, 9] }),
       zIndexOffset: 1000,
-    }).bindTooltip(`<strong>${site.title}</strong><br>${site.address}`).addTo(layer)
+    }).bindTooltip(`<strong>${escapeHtml(site.title)}</strong><br>${escapeHtml(site.address)}`).addTo(layer)
     sitePin.getElement()?.setAttribute('aria-label', `${site.title}, ${site.address}`)
 
     const place = (workerId: string, travel: { km: number; minutes: number }, isInside: boolean) => {
       const worker = workerById.get(workerId)
-      if (!worker?.lat || !worker?.lon) return
+      const home = homes.get(workerId)
+      if (!worker || !home) return
       const state = stateOf(workerId)
-      const marker = L.circleMarker([worker.lat, worker.lon], {
+      const marker = L.circleMarker([home.lat, home.lon], {
         radius: 8, weight: 2.5, color: token('--card', '#ffffff'),
         fillColor: stateColour(state),
         fillOpacity: isInside ? 1 : 0.35, opacity: isInside ? 1 : 0.4,
       })
       marker.bindTooltip(
-        `<strong>${worker.fullName}</strong><br>${travel.km} km · ${travel.minutes} min ${t('by car')}<br>${t(STATE_LABEL[state])}`,
+        `<strong>${escapeHtml(worker.fullName)}</strong><br>${travel.km} km · ${travel.minutes} min ${escapeHtml(t('by car'))}<br>${escapeHtml(t(STATE_LABEL[state]))}`,
         { direction: 'top' })
       marker.on('click', () => setSelected(workerId))
       marker.addTo(layer)
@@ -160,7 +169,7 @@ export function MapPanel({ vacancyId }: { vacancyId?: string }) {
       ringRef.current.setLatLng([site.lat, site.lon]).setRadius(radius * 1000)
     }
 
-  }, [site, inside, outside, radius, workerById, t])
+  }, [site, inside, outside, radius, workerById, homes, t])
 
   /* Framing lives on its own and keys off PRIMITIVES. Array identity cannot
      reach it, so no amount of re-rendering can steal the zoom the user chose:
@@ -175,15 +184,15 @@ export function MapPanel({ vacancyId }: { vacancyId?: string }) {
    *  Leaflet would answer with the whole world. */
   const frame = () => {
     const map = mapRef.current, el = containerRef.current
-    if (!map || !el || site.lat == null || site.lon == null) return false
+    if (!map || !el || !site || site.lat == null || site.lon == null) return false
     if (el.clientWidth === 0 || el.clientHeight === 0) return false
     /* Leaflet caches the container size; anything that changed the box since
        it last looked has to be announced. */
     map.invalidateSize()
     const bounds = L.latLngBounds([[site.lat, site.lon]])
     for (const x of insideRef.current) {
-      const w = workerById.get(x.workerId)
-      if (w?.lat && w?.lon) bounds.extend([w.lat, w.lon])
+      const home = homes.get(x.workerId)
+      if (home) bounds.extend([home.lat, home.lon])
     }
     bounds.extend(L.latLng(site.lat, site.lon).toBounds(radius * 2000))
     const padded = bounds.pad(0.08)
@@ -226,12 +235,23 @@ export function MapPanel({ vacancyId }: { vacancyId?: string }) {
       if (id === selected) marker.bringToFront()
     })
     if (!selected) return
-    const worker = workerById.get(selected)
-    if (worker?.lat && worker?.lon) mapRef.current?.panTo([worker.lat, worker.lon], { animate: true })
+    const home = homes.get(selected)
+    if (home) mapRef.current?.panTo([home.lat, home.lon], { animate: true })
     markersRef.current.get(selected)?.openTooltip()
-  }, [selected, workerById, inside])
+  }, [selected, homes, inside])
 
   const zoom = (delta: number) => { const m = mapRef.current; if (m) m.setZoom(m.getZoom() + delta) }
+  const computed = inside.concat(outside).map(x => x.travel)
+  const latest = computed.reduce<string | null>((max, x) => (!max || x.computedAt > max ? x.computedAt : max), null)
+
+  if (!site) {
+    return (
+      <StateBlock
+        title="No vacancy has a location yet"
+        description="Open a vacancy, choose Edit and pick its work address. Travel distances are calculated for everyone with a home address from Flexpedia."
+      />
+    )
+  }
 
   return (
     <>
@@ -280,7 +300,7 @@ export function MapPanel({ vacancyId }: { vacancyId?: string }) {
             return (
               <button key={workerId} className={`distance-row ${selected === workerId ? 'selected' : ''}`}
                 onClick={() => setSelected(workerId)}>
-                <span><strong>{worker.fullName}</strong><small>{travel.km} km · {travel.minutes} min · {worker.city}{worker.hasCar ? ' · car' : ''}</small></span>
+                <span><strong>{worker.fullName}</strong><small>{joinDetails(`${travel.km} km`, `${travel.minutes} min`, worker.city, worker.hasCar && t('car'))}</small></span>
                 <Badge tone={state === 'free' ? 'green' : state === 'leave' ? 'orange' : 'blue'}>{t(STATE_LABEL[state])}</Badge>
               </button>
             )
@@ -288,7 +308,7 @@ export function MapPanel({ vacancyId }: { vacancyId?: string }) {
           {!inside.length && <StateBlock title={carOnly ? 'Nobody with a car within this drive' : 'Nobody within this drive'}
             description={carOnly ? 'Widen the radius, or switch the car filter off to see everyone.' : 'Widen the radius, or change the filter.'} />}
           {unknown.length > 0 && (
-            <p className="map-note">{unknown.length} {unknown.length === 1 ? 'person has' : 'people have'} no travel on record — their address has not been geocoded.</p>
+            <p className="map-note">{t('{count} without a calculated distance: no home address from Flexpedia yet, or it could not be located.', { count: unknown.length })}</p>
           )}
         </Panel>
       </div>
@@ -300,9 +320,11 @@ export function MapPanel({ vacancyId }: { vacancyId?: string }) {
         <span className="ring-note">{t('The dashed ring is straight-line {radius} km, shown only for scale — membership is decided by road distance.', { radius })}</span>
       </p>
       <p className="map-note">
-        {t('Road distances to {address}, one way, computed {date} with {profile}. Frozen deliberately: travel money is paid on these kilometres, so they change only when an address does.', { address: site.address, date: formatDate(TRAVEL_COMPUTED_AT), profile: TRAVEL_PROFILE })}
+        {latest
+          ? t('Road distances to {address}, one way, last calculated {date} with {profile}. Frozen deliberately: travel money is paid on these kilometres, so they change only when an address does.', { address: site.address, date: formatDate(latest), profile: computed[0].profile })
+          : t('Road distances are calculated every hour for people whose Flexpedia address is known.')}
         {selected && workerById.get(selected) && (
-          <> {t('Selected:')} <Link href={`/people/${selected}`}>{workerById.get(selected)!.fullName}</Link> — {travelFor(selected, siteId)?.km} km.</>
+          <> {t('Selected:')} <Link href={`/people/${selected}`}>{workerById.get(selected)!.fullName}</Link> — {travelFor(travel, selected, siteId)?.km} km.</>
         )}
       </p>
     </>

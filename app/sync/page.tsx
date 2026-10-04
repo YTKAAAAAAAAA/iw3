@@ -7,6 +7,6 @@ export const dynamic = 'force-dynamic'
 
 export default async function Page() {
   await requireSession()
-  const data = await getPageWorkforceData()
+  const data = await getPageWorkforceData({})
   return <WorkforceDataProvider data={data}><SyncView /></WorkforceDataProvider>
 }

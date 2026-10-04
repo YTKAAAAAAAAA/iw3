@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic'
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   await requireSession()
   const { id } = await params
-  const data = await getPageWorkforceData()
+  const data = await getPageWorkforceData({ include: ['schedule', 'leaves', 'travel'] })
   const vacancy = data.vacancies.find(item => id === item.id || id === item.id.replace('v-', ''))
   if (!vacancy) notFound()
   return <WorkforceDataProvider data={data}><VacancyView id={vacancy.id} /></WorkforceDataProvider>

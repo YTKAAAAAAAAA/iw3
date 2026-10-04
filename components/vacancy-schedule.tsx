@@ -6,7 +6,7 @@ import { Badge, Panel, StateBlock, TimeField, useExit } from './app-shell'
 import { useWorkforceData } from './workforce-data-context'
 import type { CandidateVisibility } from './workforce-data-context'
 import { alreadyOnVacancy, assignmentOn, availabilityLabel, availabilityOver, blockOn, endFor, isCourseDay, shiftsOverlap, slotTimeLabel, startFor, timingOf } from '@/lib/derive'
-import { travelFor } from '@/lib/travel'
+import { travelFor, travelIndex } from '@/lib/travel'
 import { assessRequirements } from '@/lib/requirement-fit'
 import { addDays, formatDate, isoWeek, weekDates, weekdayLabel, weekdayOf, WEEKDAYS } from '@/lib/types'
 import type { Demand, Offer, RosterEntry, StandingAssignment, Vacancy, Weekday, Worker } from '@/lib/types'
@@ -664,7 +664,8 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
 }
 
 function useCandidates(vacancy: Vacancy, date: string, slot: { placeId: string | null; section: string | null; start: string | null; end: string | null }, plan: RosterEntry[]) {
-  const { leaves, vacancies, workers } = useWorkforceData()
+  const { leaves, vacancies, workers, travel: distances } = useWorkforceData()
+  const travel = useMemo(() => travelIndex(distances), [distances])
   return useMemo(() => workers
     .filter(w => w.status === 'active' && w.companyAccess.includes(vacancy.companyId))
     .map(w => {
@@ -684,8 +685,8 @@ function useCandidates(vacancy: Vacancy, date: string, slot: { placeId: string |
          does not help if there is no way to get there at 05:30. */
       const noCar = vacancy.carOnly && w.hasCar === false
       return { w, busy, onLeave, noCar, duplicate, onCourse, requirements: assessWorkerRequirements(vacancy, w),
-        elsewhere: assignmentOn(w.id, date, null, plan), travel: travelFor(w.id, vacancy.id) }
-    }), [vacancy, date, slot.placeId, slot.section, slot.start, slot.end, plan, leaves, vacancies, workers])
+        elsewhere: assignmentOn(w.id, date, null, plan), travel: travelFor(travel, w.id, vacancy.id) }
+    }), [vacancy, date, slot.placeId, slot.section, slot.start, slot.end, plan, leaves, vacancies, workers, travel])
 }
 
 /** Own transport as a filter rather than a hint.
@@ -1008,7 +1009,8 @@ function PersonDialog({ vacancy, plan, onCancel, onSave }: {
   vacancy: Vacancy; plan: RosterEntry[]; onCancel: () => void; onSave: (a: StandingAssignment) => void
 }) {
   const today = useToday()
-  const { leaves, workers } = useWorkforceData()
+  const { leaves, workers, travel: distances } = useWorkforceData()
+  const travel = useMemo(() => travelIndex(distances), [distances])
   const { closing, close: dismiss } = useExit(onCancel)
   const [workerId, setWorkerId] = useState('')
   const [weekdays, setWeekdays] = useState<Weekday[]>(vacancy.schedule.weekdays.length ? vacancy.schedule.weekdays : ['mon', 'tue', 'wed', 'thu', 'fri'])
@@ -1033,7 +1035,7 @@ function PersonDialog({ vacancy, plan, onCancel, onSave }: {
   const candidates = eligible
     .filter(w => !carOnly || w.hasCar === true)
     .map(w => ({ w, span: availabilityOver(w, days, vacancy.id, plan, leaves),
-      travel: travelFor(w.id, vacancy.id), noCar: vacancy.carOnly && w.hasCar === false,
+      travel: travelFor(travel, w.id, vacancy.id), noCar: vacancy.carOnly && w.hasCar === false,
       requirements: assessWorkerRequirements(vacancy, w) }))
     /* Free for the whole run first, then whoever frees up soonest, then by
        distance — the order the office would sort them in by hand. */
