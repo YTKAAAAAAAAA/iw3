@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth/guard'
 import { withDb } from '@/lib/db'
+import { withTransactionRetry } from '@/lib/db/retry'
 import { parseScheduleSave } from '@/lib/schedule-persistence'
 
 class ScheduleRequestError extends Error {
@@ -132,7 +133,7 @@ export async function PUT(request: Request, { params }: RouteContext) {
   if (!input) return jsonError(400, 'Invalid schedule snapshot.')
 
   try {
-    const result = await withDb(async db => {
+    const result = await withTransactionRetry(() => withDb(async db => {
       await db.query('BEGIN ISOLATION LEVEL SERIALIZABLE')
       try {
         const vacancy = await db.query<{ id: number; company_id: number }>(
@@ -449,7 +450,7 @@ export async function PUT(request: Request, { params }: RouteContext) {
         await db.query('ROLLBACK')
         throw error
       }
-    })
+    }))
     return NextResponse.json(result)
   } catch (error) {
     if (error instanceof ScheduleRequestError) return jsonError(error.status, error.message)

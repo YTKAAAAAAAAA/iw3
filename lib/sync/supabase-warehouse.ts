@@ -2,8 +2,9 @@ import 'server-only'
 
 import { Pool, type PoolClient } from 'pg'
 import { withDb } from '@/lib/db'
+import { withTransactionRetry } from '@/lib/db/retry'
 import { parseCourseDays, resolveWarehouseWorkerMatch, warehouseSiteSlug } from './warehouse-mapping'
-import { sourceRecordsMissingLocally } from './source-reconciliation'
+import { isImplausibleRemoval, sourceRecordsMissingLocally } from './source-reconciliation'
 import type { WarehouseSyncStatus, WarehouseSyncSummary } from './types'
 
 type SourceWorker = {
@@ -194,6 +195,18 @@ function sameStringValues(left: string[], right: string[]): boolean {
   return left.length === right.length && left.every(value => right.includes(value))
 }
 
+/* Supabase is a log that only grows: a few shifts disappear when a plan is
+   corrected, never most of them at once. An empty or truncated snapshot — an
+   expired key, a policy that hides rows, a half-finished import on their side
+   — would otherwise delete the imported history here every hour. */
+function assertPlausibleRemoval(kind: 'shifts' | 'absences', removing: number, linked: number) {
+  if (isImplausibleRemoval(removing, linked)) {
+    throw new SyncSourceError(
+      `Supabase would remove ${removing} of ${linked} imported ${kind} at once. The sync was stopped and nothing was changed; check the Supabase tables.`,
+    )
+  }
+}
+
 async function syncSnapshot(db: PoolClient, snapshot: SourceSnapshot): Promise<WarehouseSyncSummary> {
   await db.query("SELECT pg_advisory_xact_lock(hashtext('international-at-work:supabase-warehouse-sync'))")
   const control = await db.query<{ supabase_enabled: boolean }>(
@@ -232,6 +245,9 @@ async function syncSnapshot(db: PoolClient, snapshot: SourceSnapshot): Promise<W
     ORDER BY id
     FOR UPDATE
   `)
+  if (!snapshot.workers.length && targetWorkers.rows.some(worker => worker.supabase_worker_id !== null)) {
+    throw new SyncSourceError('Supabase returned no workers. The sync was stopped and nothing was changed.')
+  }
   const targetWorkerById = new Map(targetWorkers.rows.map(worker => [worker.id, worker]))
   const targetCourseDays = await db.query<{ worker_id: number; weekday: string }>(
     'SELECT worker_id, weekday FROM worker_course_day ORDER BY worker_id, weekday',
@@ -354,6 +370,7 @@ async function syncSnapshot(db: PoolClient, snapshot: SourceSnapshot): Promise<W
     legacyShiftsByKey.set(key, [...(legacyShiftsByKey.get(key) ?? []), row])
   }
 
+  const linkedShiftsBefore = targetShiftBySourceId.size
   for (const source of snapshot.shifts) {
     const workerId = workerIds.get(source.worker_id)
     if (!workerId) throw new SyncSourceError('A schedule row does not have a synced worker.')
@@ -414,6 +431,7 @@ async function syncSnapshot(db: PoolClient, snapshot: SourceSnapshot): Promise<W
     [...targetShiftBySourceId.keys()],
     snapshot.shifts.map(row => row.id),
   )
+  assertPlausibleRemoval('shifts', removedShiftSourceIds.length, linkedShiftsBefore)
   for (const sourceId of removedShiftSourceIds) {
     const staleShift = targetShiftBySourceId.get(sourceId)
     if (!staleShift) throw new SyncSourceError('A removed Supabase shift could not be matched locally.')
@@ -444,6 +462,7 @@ async function syncSnapshot(db: PoolClient, snapshot: SourceSnapshot): Promise<W
     })
     legacyAbsencesByKey.set(key, [...(legacyAbsencesByKey.get(key) ?? []), row])
   }
+  const linkedAbsencesBefore = absenceBySourceId.size
   for (const source of snapshot.vacations) {
     const workerId = workerIds.get(source.worker_id)
     if (!workerId) throw new SyncSourceError('A vacation row does not have a synced worker.')
@@ -488,6 +507,7 @@ async function syncSnapshot(db: PoolClient, snapshot: SourceSnapshot): Promise<W
     [...absenceBySourceId.keys()],
     snapshot.vacations.map(row => row.id),
   )
+  assertPlausibleRemoval('absences', removedAbsenceSourceIds.length, linkedAbsencesBefore)
   for (const sourceId of removedAbsenceSourceIds) {
     const staleAbsence = absenceBySourceId.get(sourceId)
     if (!staleAbsence) throw new SyncSourceError('A removed Supabase vacation could not be matched locally.')
@@ -549,8 +569,9 @@ export async function recordWarehouseSyncFailure(message: string): Promise<void>
 export async function syncWarehouseFromSupabase(): Promise<WarehouseSyncSummary> {
   const status = await getWarehouseSyncStatus()
   if (!status.enabled) throw new SyncDisabledError('Supabase Warehouse sync is disabled.')
+  await withDb(db => db.query('UPDATE warehouse_sync_control SET last_attempt_at = now() WHERE singleton = TRUE'))
   const snapshot = await readSourceSnapshot()
-  return withDb(async db => {
+  return withTransactionRetry(() => withDb(async db => {
     await db.query('BEGIN')
     try {
       const summary = await syncSnapshot(db, snapshot)
@@ -565,5 +586,5 @@ export async function syncWarehouseFromSupabase(): Promise<WarehouseSyncSummary>
       await db.query('ROLLBACK')
       throw error
     }
-  })
+  }))
 }

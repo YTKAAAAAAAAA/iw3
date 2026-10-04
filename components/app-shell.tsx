@@ -26,6 +26,7 @@ import { formatDate, parseClock } from '@/lib/types'
 import type { ReactNode } from 'react'
 import { BrandLockup } from './logo'
 import { SearchDialog } from './search-dialog'
+import { SyncStatusButton } from './sync-status-button'
 import { logout } from '@/lib/auth/actions'
 import { useLanguage } from '@/lib/i18n'
 
@@ -257,15 +258,10 @@ export function AppShell({ children, title }: { children: ReactNode; title?: str
   const [theme, setTheme] = useThemeSetting()
   const [mobile, setMobile] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
-  const [syncing, setSyncing] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const active =
     nav.find(n => n[1] === path)?.[0] ||
     (path.startsWith('/people') ? 'People' : path.startsWith('/vacancies') ? 'Vacancies' : 'Workspace')
-  const refresh = () => {
-    setSyncing(true)
-    window.setTimeout(() => setSyncing(false), 900)
-  }
   /* ⌘K/Ctrl+K opens search from anywhere, matching every other app this
      audience already uses one in. */
   useEffect(() => {
@@ -379,9 +375,7 @@ export function AppShell({ children, title }: { children: ReactNode; title?: str
             <strong>{t(title || active)}</strong>
           </div>
           <div className="top-actions">
-            <button className={`sync-button ${syncing ? 'syncing' : ''}`} onClick={refresh}>
-              {syncing ? 'Syncing…' : t('Synced 28 min ago')}
-            </button>
+            <SyncStatusButton />
             <button className="icon-button" aria-label={t('Search')} onClick={() => setSearchOpen(true)}>
               <Search />
             </button>

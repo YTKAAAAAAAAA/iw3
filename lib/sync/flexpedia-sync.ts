@@ -2,6 +2,7 @@ import 'server-only'
 
 import type { PoolClient } from 'pg'
 import { withDb } from '@/lib/db'
+import { withTransactionRetry } from '@/lib/db/retry'
 import {
   flexpediaEmployeeName,
   flexpediaProfile,
@@ -240,8 +241,9 @@ export async function recordFlexpediaSyncFailure(message: string): Promise<void>
 }
 
 export async function syncFlexpediaEmployees(): Promise<FlexpediaSyncSummary> {
+  await withDb(db => db.query('UPDATE flexpedia_sync_control SET last_attempt_at = now() WHERE singleton = TRUE'))
   const employees = await readFlexpediaEmployees()
-  return withDb(async db => {
+  return withTransactionRetry(() => withDb(async db => {
     await db.query('BEGIN ISOLATION LEVEL SERIALIZABLE')
     try {
       const summary = await syncSnapshot(db, employees)
@@ -256,5 +258,5 @@ export async function syncFlexpediaEmployees(): Promise<FlexpediaSyncSummary> {
       await db.query('ROLLBACK')
       throw error
     }
-  })
+  }))
 }

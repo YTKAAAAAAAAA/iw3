@@ -4767,3 +4767,16 @@ body,
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 11px;
 }
+
+/* Header sync indicator (components/sync-status-button.tsx). */
+.sync-button svg {
+  width: 14px;
+  height: 14px;
+}
+.sync-button.syncing:disabled {
+  opacity: 1;
+  cursor: progress;
+}
+.sync-button.sync-failing {
+  color: var(--tone-danger-ink);
+}

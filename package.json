@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node --test --experimental-strip-types lib/*.test.ts lib/sync/*.test.ts",
+    "test": "node --test --experimental-strip-types lib/*.test.ts lib/db/*.test.ts lib/sync/*.test.ts lib/travel/*.test.ts",
     "audit": "node scripts/audit.mjs",
     "db:migrate": "node scripts/migrate.mjs",
     "admin:reset-password": "node scripts/reset-admin-password.mjs"

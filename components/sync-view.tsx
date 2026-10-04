@@ -1,10 +1,12 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { AppShell, Badge, PageHeading, Panel, StateBlock } from '@/components/app-shell'
 import { useWorkforceData } from './workforce-data-context'
 import { useLanguage } from '@/lib/i18n'
+import { formatDateTime } from '@/lib/types'
 import type {
   FlexpediaFixturePreviewResult,
   FlexpediaSyncStatus,
@@ -15,6 +17,7 @@ import type {
 } from '@/lib/sync/types'
 
 type SyncResponse = {
+  scheduleMinutes?: number
   status?: WarehouseSyncStatus
   summary?: WarehouseSyncSummary
   error?: string
@@ -104,14 +107,19 @@ function isFlexpediaFixturePreview(value: unknown): value is FlexpediaFixturePre
 }
 
 async function readResponse(response: Response): Promise<SyncResponse> {
-  const value: unknown = await response.json()
+  // A proxy timeout answers with an HTML page, not JSON.
+  const value: unknown = await response.json().catch(() => {
+    throw new Error('The sync service did not answer. Try again in a minute.')
+  })
   if (!isRecord(value)) throw new Error('The sync service returned an invalid response.')
   return value as SyncResponse
 }
 
 export function SyncView() {
+  const router = useRouter()
   const { workers } = useWorkforceData()
-  const { t, locale } = useLanguage()
+  const { t } = useLanguage()
+  const [scheduleMinutes, setScheduleMinutes] = useState(0)
   const [status, setStatus] = useState<WarehouseSyncStatus | null>(null)
   const [flexpediaStatus, setFlexpediaStatus] = useState<FlexpediaSyncStatus | null>(null)
   const [flexpediaConfigured, setFlexpediaConfigured] = useState(false)
@@ -135,6 +143,7 @@ export function SyncView() {
           status: body,
           flexpediaStatus: body.flexpediaStatus,
           flexpediaConfigured: body.flexpediaConfigured === true,
+          scheduleMinutes: typeof body.scheduleMinutes === 'number' ? body.scheduleMinutes : 0,
         }
       })
       .then(result => {
@@ -142,6 +151,7 @@ export function SyncView() {
         setStatus(result.status)
         setFlexpediaStatus(result.flexpediaStatus)
         setFlexpediaConfigured(result.flexpediaConfigured)
+        setScheduleMinutes(result.scheduleMinutes)
       })
       .catch(cause => {
         if (active) setError(cause instanceof Error ? cause.message : 'Could not load sync status.')
@@ -178,6 +188,7 @@ export function SyncView() {
           throw new Error('Flexpedia synchronization returned an invalid summary.')
         }
         setFlexpediaStatus(body.flexpediaStatus)
+        router.refresh()
         setMessage({
           key: 'Flexpedia sync completed — new employees added: {employeesAdded}; profiles updated: {employeesUpdated}. Employment status is managed manually.',
           values: body.flexpediaSummary,
@@ -197,6 +208,7 @@ export function SyncView() {
           throw new Error('The Warehouse sync returned an invalid summary.')
         }
         setStatus(body.status)
+        router.refresh()
         setMessage({
           key: 'Warehouse snapshot reconciled. Source-linked shifts and absences now match Supabase; local-only records remain.',
         })
@@ -204,6 +216,7 @@ export function SyncView() {
       }
       if (!isSyncStatus(body)) throw new Error('The sync service returned an invalid status.')
       setStatus(body)
+      router.refresh()
       setMessage({
         key:
           action === 'enable-supabase'
@@ -217,21 +230,18 @@ export function SyncView() {
     }
   }
 
-  const lastSync = status?.lastSyncAt
-    ? new Date(status.lastSyncAt).toLocaleString(locale === 'nl' ? 'nl-NL' : 'en-GB')
-    : t('Never')
+  const lastSync = status?.lastSyncAt ? formatDateTime(status.lastSyncAt) : t('Never')
   const flexpediaLastSync = flexpediaStatus?.lastSyncAt
-    ? new Date(flexpediaStatus.lastSyncAt).toLocaleString(locale === 'nl' ? 'nl-NL' : 'en-GB')
+    ? formatDateTime(flexpediaStatus.lastSyncAt)
     : t('Never')
+  const scheduleNote = scheduleMinutes
+    ? t('Syncs automatically every {minutes} minutes. You can also sync now.', { minutes: scheduleMinutes })
+    : t('Automatic sync is off on this server. Sync manually here.')
 
   return (
     <AppShell title="Sync sources">
       <div className="content-inner">
-        <PageHeading
-          eyebrow={t('Data connections')}
-          title="Sync sources"
-          description={t('Warehouse history stays in PostgreSQL when you switch data sources.')}
-        />
+        <PageHeading eyebrow="Data connections" title="Sync sources" description={scheduleNote} />
         {error && <StateBlock kind="error" title="Sync request failed" description={t(error)} />}
         {message && (
           <p role="status" className="field-hint">
@@ -249,52 +259,54 @@ export function SyncView() {
                 {loading ? t('Loading') : status?.enabled ? t('Enabled') : t('Disabled')}
               </Badge>
             </div>
-            <div className="sync-meta">
-              <span>{t('Last sync')}</span>
-              <strong>{lastSync}</strong>
-            </div>
-            {status?.lastError && (
-              <p role="status" className="field-hint">
-                {t('Last sync error:')} {status.lastError}
-              </p>
-            )}
-            {status?.lastSummary && (
+            <div className="sync-body">
+              <div className="sync-meta">
+                <span>{t('Last sync')}</span>
+                <strong>{lastSync}</strong>
+              </div>
+              {status?.lastError && (
+                <p role="status" className="field-hint">
+                  {t('Last sync error:')} {t(status.lastError)}
+                </p>
+              )}
+              {status?.lastSummary && (
+                <p className="field-hint">
+                  {t(
+                    'Last result: {workersAdded} workers added, {workersUpdated} updated; {shiftsAdded} shifts added, {shiftsUpdated} updated, {shiftsDeleted} deleted; {absencesAdded} absences added, {absencesUpdated} updated, {absencesDeleted} deleted.',
+                    status.lastSummary,
+                  )}
+                </p>
+              )}
+              <div className="button-row">
+                <button
+                  className="button button-primary"
+                  type="button"
+                  disabled={loading || working || !status?.enabled || !status.configured}
+                  onClick={() => submit('sync-supabase')}
+                >
+                  <RefreshCw aria-hidden="true" />
+                  {working ? t('Working…') : t('Sync Warehouse now')}
+                </button>
+                <button
+                  className="button button-secondary"
+                  type="button"
+                  disabled={loading || working}
+                  onClick={() => submit(status?.enabled ? 'disable-supabase' : 'enable-supabase')}
+                >
+                  {status?.enabled ? t('Disable Supabase sync') : t('Enable Supabase sync')}
+                </button>
+              </div>
+              {!status?.configured && !loading && (
+                <p className="field-hint">
+                  {t('Supabase is not connected on this server yet. Ask the administrator to set it up.')}
+                </p>
+              )}
               <p className="field-hint">
                 {t(
-                  'Last result: {workersAdded} workers added, {workersUpdated} updated; {shiftsAdded} shifts added, {shiftsUpdated} updated, {shiftsDeleted} deleted; {absencesAdded} absences added, {absencesUpdated} updated, {absencesDeleted} deleted.',
-                  status.lastSummary,
+                  'Sync is a read-only Supabase snapshot. Imported shifts and absences are reconciled by source ID, including source deletions. Local-only records are not removed. When a source shift is deleted, its shift and attached offer records are deleted too.',
                 )}
               </p>
-            )}
-            <div className="button-row">
-              <button
-                className="button button-primary"
-                type="button"
-                disabled={loading || working || !status?.enabled || !status.configured}
-                onClick={() => submit('sync-supabase')}
-              >
-                <RefreshCw aria-hidden="true" />
-                {working ? t('Working…') : t('Sync Warehouse now')}
-              </button>
-              <button
-                className="button button-secondary"
-                type="button"
-                disabled={loading || working}
-                onClick={() => submit(status?.enabled ? 'disable-supabase' : 'enable-supabase')}
-              >
-                {status?.enabled ? t('Disable Supabase sync') : t('Enable Supabase sync')}
-              </button>
             </div>
-            {!status?.configured && !loading && (
-              <p className="field-hint">
-                {t('Set SUPABASE_DATABASE_URL in .env and restart the app to enable sync.')}
-              </p>
-            )}
-            <p className="field-hint">
-              {t(
-                'Sync is a read-only Supabase snapshot. Imported shifts and absences are reconciled by source ID, including source deletions. Local-only records are not removed. When a source shift is deleted, its shift and attached offer records are deleted too.',
-              )}
-            </p>
           </Panel>
 
           <Panel>
@@ -306,61 +318,73 @@ export function SyncView() {
                 </p>
               </div>
               <Badge tone={flexpediaConfigured ? 'success' : 'neutral'}>
-                {flexpediaConfigured ? t('Token configured') : t('Not configured')}
+                {flexpediaConfigured ? t('Connected') : t('Not connected')}
               </Badge>
             </div>
-            <div className="sync-meta">
-              <span>{t('Last sync')}</span>
-              <strong>{flexpediaLastSync}</strong>
-            </div>
-            {flexpediaStatus?.lastError && (
-              <p role="status" className="field-hint">
-                {t('Last sync error:')} {t(flexpediaStatus.lastError)}
-              </p>
-            )}
-            {flexpediaStatus?.lastSummary && (
+            <div className="sync-body">
+              <div className="sync-meta">
+                <span>{t('Last sync')}</span>
+                <strong>{flexpediaLastSync}</strong>
+              </div>
+              {flexpediaStatus?.lastError && (
+                <p role="status" className="field-hint">
+                  {t('Last sync error:')} {t(flexpediaStatus.lastError)}
+                </p>
+              )}
+              {flexpediaStatus?.lastSummary && (
+                <p className="field-hint">
+                  {t(
+                    'Last Flexpedia result: {employeesAdded} added, {employeesUpdated} profiles updated. Employment status is managed manually.',
+                    flexpediaStatus.lastSummary,
+                  )}
+                </p>
+              )}
+              <div className="button-row">
+                <button
+                  className="button button-primary"
+                  type="button"
+                  disabled={loading || working || !flexpediaConfigured}
+                  onClick={() => submit('sync-flexpedia')}
+                >
+                  <RefreshCw aria-hidden="true" />
+                  {working ? t('Working…') : t('Sync Flexpedia employees')}
+                </button>
+                <button
+                  className="button button-secondary"
+                  type="button"
+                  disabled={working || !flexpediaConfigured}
+                  onClick={() => submit('test-flexpedia')}
+                >
+                  {t('Test Flexpedia connection')}
+                </button>
+              </div>
+              {!flexpediaConfigured && !loading && (
+                <p className="field-hint">
+                  {t(
+                    'Flexpedia is not connected on this server yet. Ask the administrator to add the API token.',
+                  )}
+                </p>
+              )}
               <p className="field-hint">
                 {t(
-                  'Last Flexpedia result: {employeesAdded} added, {employeesUpdated} profiles updated. Employment status is managed manually.',
-                  flexpediaStatus.lastSummary,
+                  'Flexpedia profile fields are authoritative, including null values. Flexpedia sync never dismisses or reactivates employees. Use the People page to change employment status; shifts, absences, hours, and work history remain. New employees are added without company access until assigned locally.',
                 )}
               </p>
-            )}
-            <button
-              className="button button-primary"
-              type="button"
-              disabled={loading || working || !flexpediaConfigured}
-              onClick={() => submit('sync-flexpedia')}
-            >
-              <RefreshCw aria-hidden="true" />
-              {working ? t('Working…') : t('Sync Flexpedia employees')}
-            </button>
-            <button
-              className="button button-secondary"
-              type="button"
-              disabled={working || !flexpediaConfigured}
-              onClick={() => submit('test-flexpedia')}
-            >
-              <RefreshCw aria-hidden="true" />
-              {t('Test Flexpedia connection')}
-            </button>
-            {!flexpediaConfigured && (
-              <p className="field-hint">
-                {t('Set FLEXPEDIA_API_TOKEN in .env and restart the app before testing.')}
-              </p>
-            )}
-            <p className="field-hint">
-              {t(
-                'Flexpedia profile fields are authoritative, including null values. Flexpedia sync never dismisses or reactivates employees. Use the People page to change employment status; shifts, absences, hours, and work history remain. New employees are added without company access until assigned locally.',
+              {flexpediaResult && (
+                <p role="status" className="field-hint">
+                  {t(
+                    'Read {employees} employees in {pages} pages; {matched} matched, {unmatched} unmatched, {ambiguous} ambiguous. No records were changed.',
+                    {
+                      employees: flexpediaResult.employees,
+                      pages: flexpediaResult.pages,
+                      matched: flexpediaResult.matched,
+                      unmatched: flexpediaResult.unmatched,
+                      ambiguous: flexpediaResult.ambiguous,
+                    },
+                  )}
+                </p>
               )}
-            </p>
-            {flexpediaResult && (
-              <p role="status" className="field-hint">
-                Read {flexpediaResult.employees} employees in {flexpediaResult.pages} pages;{' '}
-                {flexpediaResult.matched} matched, {flexpediaResult.unmatched} unmatched,{' '}
-                {flexpediaResult.ambiguous} ambiguous. No records were changed.
-              </p>
-            )}
+            </div>
           </Panel>
 
           <Panel>
@@ -373,32 +397,42 @@ export function SyncView() {
                   )}
                 </p>
               </div>
-              <Badge tone="neutral">No database writes</Badge>
+              <Badge tone="neutral">{t('No database writes')}</Badge>
             </div>
-            <p className="field-hint">
-              {t(
-                'Optional fields may be null in real API responses. The preview replaces the profile from Flexpedia; shifts, course days, and absences stay unchanged.',
-              )}
-            </p>
-            <button
-              className="button button-secondary"
-              type="button"
-              disabled={working || loading}
-              onClick={() => submit('preview-flexpedia-fixture')}
-            >
-              <RefreshCw aria-hidden="true" />
-              {t('Preview one-time fixture')}
-            </button>
-            {fixturePreview && (
-              <p role="status" className="field-hint">
-                {fixturePreview.existingMatched} existing worker matched; {fixturePreview.existingWouldEnrich}{' '}
-                would be updated ({fixturePreview.existingFieldsChanged} profile fields changed);{' '}
-                {fixturePreview.newWouldAdd} new demo worker would be added. Preserved:{' '}
-                {fixturePreview.assignedShiftsPreserved} shifts, {fixturePreview.courseDaysPreserved} course
-                days, {fixturePreview.absencesPreserved} absence periods. Covered{' '}
-                {fixturePreview.apiFieldsCovered} schema fields. No records were written.
+            <div className="sync-body">
+              <p className="field-hint">
+                {t(
+                  'Optional fields may be null in real API responses. The preview replaces the profile from Flexpedia; shifts, course days, and absences stay unchanged.',
+                )}
               </p>
-            )}
+              <div className="button-row">
+                <button
+                  className="button button-secondary"
+                  type="button"
+                  disabled={working || loading}
+                  onClick={() => submit('preview-flexpedia-fixture')}
+                >
+                  {t('Preview one-time fixture')}
+                </button>
+              </div>
+              {fixturePreview && (
+                <p role="status" className="field-hint">
+                  {t(
+                    '{existingMatched} existing worker matched; {existingWouldEnrich} would be updated ({existingFieldsChanged} profile fields changed); {newWouldAdd} new demo worker would be added. Preserved: {assignedShiftsPreserved} shifts, {courseDaysPreserved} course days, {absencesPreserved} absence periods. Covered {apiFieldsCovered} schema fields. No records were written.',
+                    {
+                      existingMatched: fixturePreview.existingMatched,
+                      existingWouldEnrich: fixturePreview.existingWouldEnrich,
+                      existingFieldsChanged: fixturePreview.existingFieldsChanged,
+                      newWouldAdd: fixturePreview.newWouldAdd,
+                      assignedShiftsPreserved: fixturePreview.assignedShiftsPreserved,
+                      courseDaysPreserved: fixturePreview.courseDaysPreserved,
+                      absencesPreserved: fixturePreview.absencesPreserved,
+                      apiFieldsCovered: fixturePreview.apiFieldsCovered,
+                    },
+                  )}
+                </p>
+              )}
+            </div>
           </Panel>
         </div>
 
@@ -406,15 +440,17 @@ export function SyncView() {
           <div className="panel-header">
             <div>
               <h2>{t('Local workforce history')}</h2>
-              <p>{t('Synced records and local scheduling remain in the Docker PostgreSQL database.')}</p>
+              <p>{t('Synced records and local scheduling stay in the dispatcher database.')}</p>
             </div>
-            <Badge tone="neutral">{workers.length} workers</Badge>
+            <Badge tone="neutral">{t('{count} workers', { count: workers.length })}</Badge>
           </div>
-          <p className="field-hint">
-            {t(
-              'Turning off Supabase only stops future imports. It does not clear Warehouse records already imported. Flexpedia sync updates employee profiles; employment status is managed manually, while shift schedules, absence history, and manually entered hours remain in the local database.',
-            )}
-          </p>
+          <div className="sync-body">
+            <p className="field-hint">
+              {t(
+                'Turning off Supabase only stops future imports. It does not clear Warehouse records already imported. Flexpedia sync updates employee profiles; employment status is managed manually, while shift schedules, absence history, and manually entered hours remain in the local database.',
+              )}
+            </p>
+          </div>
         </Panel>
       </div>
     </AppShell>

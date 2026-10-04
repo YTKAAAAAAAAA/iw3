@@ -21,6 +21,8 @@ import {
   recordFlexpediaSyncFailure,
   syncFlexpediaEmployees,
 } from '@/lib/sync/flexpedia-sync'
+import { syncIntervalMinutes } from '@/lib/sync/scheduler'
+import { refreshTravelDistances } from '@/lib/travel/refresh'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,6 +37,7 @@ export async function GET() {
       ...await getWarehouseSyncStatus(),
       flexpediaStatus: await getFlexpediaSyncStatus(),
       flexpediaConfigured: Boolean(process.env.FLEXPEDIA_API_TOKEN),
+      scheduleMinutes: syncIntervalMinutes(),
     }, { headers: { 'Cache-Control': 'private, no-store' } })
   } catch (error) {
     console.error('Could not load sync status.', error)
@@ -85,9 +88,43 @@ export async function POST(request: Request) {
     }
   }
 
+  if (body.action === 'sync-all') {
+    // The header button: every configured, enabled source, then distances.
+    const status = await getWarehouseSyncStatus().catch(() => null)
+    const failures: string[] = []
+    if (status?.enabled && status.configured) {
+      try {
+        await syncWarehouseFromSupabase()
+      } catch (error) {
+        const message = error instanceof SyncConfigurationError || error instanceof SyncSourceError
+          ? error.message : 'Warehouse synchronization failed.'
+        failures.push(message)
+        await recordWarehouseSyncFailure(message).catch(cause => console.error('Could not save sync failure.', cause))
+        if (!(error instanceof SyncSourceError)) console.error('Warehouse synchronization failed.', error)
+      }
+    }
+    if (process.env.FLEXPEDIA_API_TOKEN) {
+      try {
+        await syncFlexpediaEmployees()
+      } catch (error) {
+        const message = error instanceof FlexpediaRequestError || error instanceof FlexpediaSyncError
+          ? error.message : 'Flexpedia synchronization failed.'
+        failures.push(message)
+        await recordFlexpediaSyncFailure(message).catch(cause => console.error('Could not save sync failure.', cause))
+        if (!(error instanceof FlexpediaSyncError)) console.error('Flexpedia synchronization failed.', error)
+      }
+    }
+    void refreshTravelDistances().catch(error => console.error('Travel distance refresh failed.', error))
+    return NextResponse.json(
+      failures.length ? { error: failures.join(' ') } : { ok: true },
+      { status: failures.length ? 502 : 200, headers: { 'Cache-Control': 'private, no-store' } },
+    )
+  }
+
   if (body.action === 'sync-flexpedia') {
     try {
       const summary = await syncFlexpediaEmployees()
+      void refreshTravelDistances().catch(error => console.error('Travel distance refresh failed.', error))
       return NextResponse.json({
         flexpediaSummary: summary,
         flexpediaStatus: await getFlexpediaSyncStatus(),
