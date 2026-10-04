@@ -29,7 +29,9 @@ are not treated as source records and remain untouched. Flexpedia owns the
 name of every worker linked to it; Supabase only names workers that are not
 linked to Flexpedia yet. Exact-name matching is
 used only to link older local worker rows that do not yet have a Supabase ID;
-ambiguous matches stop the entire sync.
+ambiguous matches stop the entire sync. A snapshot that would delete all, or
+more than half, of the imported shifts or absences is refused as a broken
+source and changes nothing.
 
 Disabling Supabase sync only stops future snapshots. The separate Flexpedia
 employee sync reads the complete paginated employee list, matches by stable ID
@@ -61,14 +63,15 @@ either record. Flexpedia's documented endpoint does not provide schedules.
 | `vacancy_demand` | Dated headcount/time requirements. |
 | `shift` | Assigned or uncovered shift occurrence, hours, planned/actual times, confirmation, attendance and replacement link. |
 | `vacancy_schedule_state` | Per-vacancy schedule revision, standing assignments, and candidate offer/decline decisions. |
-| `vacancy_workday_photo` | Private JPEG/PNG/WebP photos attached to a vacancy and work date; authenticated API routes serve the image bytes stored in PostgreSQL. |
+| `vacancy_workday_photo` | Metadata of private JPEG/PNG/WebP photos attached to a vacancy and work date. The image itself is a file in `PHOTO_STORAGE_DIR` named by `storage_key`; `image` (BYTEA) only remains for rows not yet moved by `scripts/migrate.mjs`. |
 | `shift_offer` | Offer/response history per candidate and shift. |
 | `manual_hours` | Per-worker, vacancy, and date overrides for manually entered time; imported shift hours remain unchanged. |
 | `worker_course_day`, `worker_qualification`, `worker_company_access` | Normalized recurring availability and candidate-fit data. |
 | `vacancy_change` | Auditable vacancy change history. |
 | `app_user` | Login credentials and a session version incremented on password changes to revoke all previously issued tokens. |
 | `auth_login_attempt` | Short-lived sign-in throttling keyed by an HMAC of the client IP, not the raw IP. |
-| `travel_distances`, `geocode_cache` | Optional route history and address lookup cache. |
+| `travel_distances`, `geocode_cache` | Road distance per worker address × vacancy address, frozen and superseded rather than overwritten, and the address → coordinates cache. Filled hourly by `lib/travel/refresh.ts` from `travel_recompute_queue`. |
+| `warehouse_sync_control`, `flexpedia_sync_control` | Per-source switch, last success, last attempt and last error; the hourly scheduler syncs a source when its last attempt is older than `SYNC_INTERVAL_MINUTES`. |
 
 ## Vacancy schedule persistence
 

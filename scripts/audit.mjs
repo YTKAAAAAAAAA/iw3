@@ -1,7 +1,13 @@
 /* Visual and accessibility sweep over every route, both themes, three widths.
  *
- *   node scripts/audit.mjs                       # the dev server on :3101
- *   node scripts/audit.mjs https://example.com   # anywhere else
+ *   AUDIT_PASSWORD=… node scripts/audit.mjs                       # local server on :3000
+ *   AUDIT_PASSWORD=… node scripts/audit.mjs https://staging.example  # anywhere else
+ *
+ * It signs in with AUDIT_PASSWORD, then visits every screen. Person and
+ * vacancy pages are taken from the first entries of the live lists, so the
+ * sweep works against real data instead of fixed prototype IDs. Set
+ * AUDIT_BROWSER_CHANNEL=chrome to use an installed Chrome instead of
+ * Playwright's own Chromium.
  *
  * Two engines run on each page:
  *
@@ -23,9 +29,11 @@ import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
 const axeSource = readFileSync(require.resolve('axe-core/axe.min.js'), 'utf8')
 
-const BASE = process.argv[2] ?? 'http://localhost:3101'
-const ROUTES = ['/', '/people', '/people/w-03', '/vacancies', '/vacancies/v-postnl-night',
-                '/vacancies/new', '/hours', '/companies', '/map', '/sync']
+const BASE = (process.argv[2] ?? 'http://localhost:3000').replace(/\/+$/, '')
+const PASSWORD = process.env.AUDIT_PASSWORD
+if (!PASSWORD) throw new Error('Set AUDIT_PASSWORD to the dispatcher password of the instance being audited.')
+const STATIC_ROUTES = ['/', '/people', '/people?status=dismissed', '/vacancies', '/vacancies/new', '/hours',
+                       '/companies', '/map', '/sync', '/settings/password', '/this-page-does-not-exist']
 const THEMES = ['light', 'dark']
 const WIDTHS = [[1440, 900], [768, 1024], [375, 812]]
 
@@ -103,7 +111,24 @@ const localChecks = () => {
   return { offGrid: top(offGrid), offType: top(offType), tiny: top(tiny), spill: top(spill), nearMiss: [...nearMiss] }
 }
 
-const browser = await chromium.launch()
+const browser = await chromium.launch(process.env.AUDIT_BROWSER_CHANNEL ? { channel: process.env.AUDIT_BROWSER_CHANNEL } : {})
+
+async function signIn(context) {
+  const page = await context.newPage()
+  await page.goto(`${BASE}/login`)
+  await page.fill('input[type=password]', PASSWORD)
+  await Promise.all([page.waitForURL(url => !url.pathname.startsWith('/login'), { timeout: 30000 }), page.click('button[type=submit]')])
+  return page
+}
+
+/* One real person and one real vacancy, read from the lists. */
+async function detailRoutes(page) {
+  await page.goto(`${BASE}/people`, { waitUntil: 'networkidle' })
+  const person = await page.locator('a.person-cell').first().getAttribute('href').catch(() => null)
+  await page.goto(`${BASE}/vacancies`, { waitUntil: 'networkidle' })
+  const vacancy = await page.locator('a[href^="/vacancies/"]:not([href="/vacancies/new"])').first().getAttribute('href').catch(() => null)
+  return [person, vacancy].filter(Boolean)
+}
 const axeFindings = new Map()
 const localFindings = new Map()
 let checked = 0
@@ -117,7 +142,8 @@ const note = (map, key, where) => {
 for (const theme of THEMES) {
   const context = await browser.newContext({ viewport: { width: WIDTHS[0][0], height: WIDTHS[0][1] } })
   await context.addInitScript(t => { try { localStorage.setItem('iaw-theme', t) } catch {} }, theme)
-  const page = await context.newPage()
+  const page = await signIn(context)
+  const ROUTES = [...STATIC_ROUTES, ...await detailRoutes(page)]
 
   for (const route of ROUTES) {
     for (const [width, height] of WIDTHS) {

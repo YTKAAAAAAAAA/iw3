@@ -1,65 +1,24 @@
 # Local Docker and deployment
 
-The app and PostgreSQL can run locally in Docker. PostgreSQL is on a private,
-internal Compose network with no published host port; only the app can connect.
-The app itself is published on `127.0.0.1:3000`, not on the local network.
+The stack is three containers from `compose.yaml`:
 
-## Vercel frontend and VPS backend
+| Service | What it does |
+| --- | --- |
+| `postgres` | PostgreSQL 17 on a private, internal network with no published port. |
+| `app` | The dispatcher (Next.js standalone server). Runs the schema migrations on every start, then serves on `127.0.0.1:3000`. Read-only filesystem; workday photos live in the `photos_data` volume. Docker healthcheck: `/api/health`. |
+| `backup` | Daily `pg_dump` and photo archive into `./backups`, each dump verified by a test restore. |
 
-The Vercel deployment serves the Next.js interface. Its `/api/*` requests and
-server-rendered workforce data go to the API on the VPS over HTTPS. The
-PostgreSQL container remains on a private Docker network and is never exposed
-to Vercel or the public internet.
-
-The VPS uses a separate Compose override to bind the app to
-`127.0.0.1:3001`; it does not publish a database port:
-
-```sh
-docker compose -f compose.yaml -f compose.server.yaml up -d postgres
-docker compose -f compose.yaml -f compose.server.yaml build app
-docker compose -f compose.yaml -f compose.server.yaml run --rm app npm run db:migrate
-docker compose -f compose.yaml -f compose.server.yaml up -d app
-```
-
-Add this route inside the existing `api.iatw-backend.site` Caddy site block,
-before its existing `reverse_proxy` directive. Validate the Caddyfile before
-reloading Caddy. The path is reserved for this app; the existing backend's
-routes continue to use their existing upstream:
-
-```caddy
-handle_path /dispatcher-api/* {
-    reverse_proxy 127.0.0.1:3001
-}
-```
-
-Create a new Vercel project from the repository's `master` branch; do not
-replace the existing Vercel projects. Set these Vercel **Production** and
-**Preview** environment variables:
-
-- `APP_BACKEND_URL=https://api.iatw-backend.site/dispatcher-api`
-- `BACKEND_PROXY_SECRET` — the same random secret on Vercel and the VPS; it
-  restricts password sign-in requests to the Vercel server action.
-- `SESSION_SECRET` — exactly the same random secret configured on the VPS.
-- `INITIAL_ADMIN_EMAIL` — the same administrator email as the VPS.
-
-On the VPS, set `BACKEND_PROXY_SECRET`, `SESSION_SECRET`, `INITIAL_ADMIN_EMAIL`, and
-`INITIAL_ADMIN_PASSWORD` in its private `.env`, along with separate
-`POSTGRES_SUPERUSER_PASSWORD` and `APP_DB_PASSWORD` secrets. The Vercel
-project never receives database credentials. Browser API calls use same-origin
-Vercel rewrites; server-rendered pages make authenticated HTTPS requests to the
-backend. Do not set `DATABASE_URL` on Vercel.
+The app syncs Flexpedia employees and the Supabase Warehouse snapshot every
+hour on its own (`SYNC_INTERVAL_MINUTES`, default 60, `0` turns it off) and
+then recalculates road distances for changed addresses. Both sources can also
+be synced by hand on **Sync sources** or with the sync button in the header.
 
 ## Start locally
 
 1. Start Docker Desktop and copy `.env.example` to `.env`.
 2. Set distinct, random values for `POSTGRES_SUPERUSER_PASSWORD`,
-   `APP_DB_PASSWORD`, and `SESSION_SECRET` (at least 32 bytes). Set
-   `INITIAL_ADMIN_PASSWORD` to a unique password of at least 12 characters.
-   Set `SUPABASE_DATABASE_URL` to the Supabase PostgreSQL connection string
-   for the Warehouse snapshot. Set `FLEXPEDIA_API_TOKEN` to enable employee
-   synchronization. Hex-encoded random values work well
-   for the database passwords. For
-   example, in PowerShell generate a fresh value with:
+   `APP_DB_PASSWORD` and `SESSION_SECRET` (at least 32 bytes), and a unique
+   `INITIAL_ADMIN_PASSWORD` of at least 12 characters. In PowerShell:
 
    ```powershell
    $bytes = [byte[]]::new(32)
@@ -68,89 +27,124 @@ backend. Do not set `DATABASE_URL` on Vercel.
    ```
 
    Generate a different value for every secret and paste them only into `.env`.
-   Keep `.env` out of Git.
-3. Start PostgreSQL and wait until it is healthy:
+   Optionally set `SUPABASE_DATABASE_URL` (see below) and `FLEXPEDIA_API_TOKEN`.
+3. Build and start everything:
 
    ```sh
-   docker compose up -d postgres
+   docker compose up -d --build
    ```
 
-4. Build the app image and apply schema migrations:
+4. Open <http://localhost:3000> and sign in with `INITIAL_ADMIN_PASSWORD`.
+   That first sign-in creates the account; afterwards only the account's own
+   password works. Remove `INITIAL_ADMIN_PASSWORD` from `.env` and change the
+   password under **Change password**.
 
-   ```sh
-   docker compose build app
-   docker compose run --rm app npm run db:migrate
-   ```
+Updating is the same command: `docker compose up -d --build`. Migrations are
+idempotent and take an advisory lock, so they are safe on every start. To run
+them by hand: `docker compose run --rm app node scripts/migrate.mjs`.
 
-5. Start the site at <http://localhost:3000>:
+## Vercel frontend and VPS backend
 
-   ```sh
-   docker compose up -d app
-   ```
+The Vercel deployment serves the pages. Its `/api/*` requests (see
+`vercel.json`) and its server-rendered data go to the VPS over HTTPS. The
+database is never exposed to Vercel or the internet.
 
-6. Sign in and open **Sync sources**. **Sync Warehouse now** reconciles
-   Supabase workers, shifts, and absence periods by source IDs. Supabase is
-   read-only; deleted imported shifts and absences are removed locally, while
-   local-only records are retained. Disable Supabase there to stop future
-   snapshots.
+On the VPS, bind the app to `127.0.0.1:3001` with the override file:
 
-7. Set `FLEXPEDIA_API_TOKEN` in `.env` and restart the app. **Sync Flexpedia
-   employees** updates employee profiles from Flexpedia but never changes
-   employment status. Dismiss or restore a worker manually on the People page;
-   the worker's shifts and history remain saved. New workers receive no company
-   access until assigned locally. Flexpedia does not provide schedules.
+```sh
+docker compose -f compose.yaml -f compose.server.yaml up -d --build
+```
 
-The named `postgres_data` volume persists the database across container
-restarts. The image creates a non-superuser `dispatcher` role for the app;
-only the PostgreSQL superuser initializes the database. `POSTGRES_HOST_AUTH_METHOD`
-and `POSTGRES_INITDB_ARGS` require SCRAM-SHA-256 password authentication.
+Add this route inside the `api.iatw-backend.site` Caddy site block, **before**
+its existing `reverse_proxy` directive, then validate and reload Caddy:
 
-The database is not published to the host, and the database network is marked
-internal. The UI/API is the only service attached to both that network and the
-outbound app network. Docker MFA is not a PostgreSQL feature: database
-connections use the app's service credential, not an interactive login. MFA
-can be added to human sign-in separately if required.
+```caddy
+handle_path /dispatcher-api/* {
+    reverse_proxy 127.0.0.1:3001
+}
+```
 
-## VPS
+```sh
+caddy validate --config /etc/caddy/Caddyfile && caddy reload --config /etc/caddy/Caddyfile
+```
 
-On a VPS, keep PostgreSQL on the same private Docker network with no `ports`
-mapping. Publish the app only through a TLS-terminating reverse proxy, and
-restrict host firewall ingress to the proxy's required ports. Use a unique
-`.env` on the server, restrict SSH and Docker-daemon access, encrypt backups,
-and test restoring them. A Docker volume is persistent storage, not a backup
-or at-rest encryption.
+Check it from outside: `curl https://api.iatw-backend.site/dispatcher-api/api/health`
+must answer `{"status":"ok",…}`. A `{"detail":"Not Found"}` answer comes from
+the other backend on that host and means the route above is missing or below
+the catch-all `reverse_proxy`; a 502 means the app container is not running.
 
-Do not expose PostgreSQL directly to Vercel or the public internet. For this
-deployment, Vercel talks only to the VPS API over HTTPS; PostgreSQL is reachable
-only by the backend app over its private Docker network.
+Create a Vercel project from this repository's `master` branch. Set in Vercel
+(Production and Preview):
+
+- `APP_BACKEND_URL=https://api.iatw-backend.site/dispatcher-api`
+- `BACKEND_PROXY_SECRET` — the same random secret on Vercel and the VPS; it
+  restricts password sign-in requests to the Vercel server action.
+- `SESSION_SECRET` — exactly the same secret as on the VPS.
+- `INITIAL_ADMIN_EMAIL` — the same value as on the VPS.
+
+Do not set `DATABASE_URL` on Vercel. Automatic sync only runs on the VPS.
+
+## Supabase: read-only access
+
+The Warehouse sync reads `public.workers`, `public.schedule` and
+`public.vacations` inside a read-only transaction. Give it a role that cannot
+write anything even if the app is compromised, instead of the `postgres` user.
+In the Supabase SQL editor:
+
+```sql
+CREATE ROLE iaw_reader LOGIN PASSWORD '<a long random password>' BYPASSRLS;
+GRANT USAGE ON SCHEMA public TO iaw_reader;
+GRANT SELECT ON public.workers, public.schedule, public.vacations TO iaw_reader;
+ALTER ROLE iaw_reader SET default_transaction_read_only = on;
+```
+
+`BYPASSRLS` is needed because those tables have row-level security; the role
+can still only read the three tables. Then use the pooler connection string
+with `iaw_reader.<project-ref>` as the user in `SUPABASE_DATABASE_URL`.
+
+The sync refuses a snapshot that would delete all, or more than half, of the
+imported shifts or absences at once, and changes nothing in that case.
+
+## Travel distances and privacy
+
+Worker home addresses come from Flexpedia. Each new address is geocoded once
+(PDOK Locatieserver, the Dutch address register; Nominatim as fallback) and
+cached. Road distances to every open vacancy are computed with OSRM
+(`ROUTING_BASE_URL`) and stored per address pair; a pair is only recomputed
+when one of its addresses changes. Old distances are closed, not overwritten,
+so past travel compensation stays reproducible.
+
+This sends home addresses to PDOK/Nominatim and coordinates to the routing
+server. The default public OSRM server is a fair-use demo; for production with
+real addresses, self-host OSRM with the Netherlands extract (about 2 GB RAM)
+and point `ROUTING_BASE_URL` at it, so no coordinates leave your server.
+
+## Backups and monitoring
+
+- `./backups` holds `dispatcher-<time>.dump` and `photos-<time>.tar.gz` for
+  `BACKUP_KEEP_DAYS` days. `LAST_SUCCESS` names the last verified backup,
+  `LAST_FAILURE` the last failed one. Copy the directory off the server
+  (for example with restic or rclone): a backup on the same disk does not
+  survive losing that disk.
+- Set `BACKUP_PING_URL` to a dead-man switch (e.g. healthchecks.io) to be
+  alerted when a daily backup does not happen.
+- Point an uptime monitor at `https://…/dispatcher-api/api/health`: HTTP 200
+  means the database answers; `"sync":"stale"` means automatic sync has not
+  succeeded for three intervals.
+- Restore: `docker compose exec -T postgres pg_restore -U postgres -d dispatcher --clean --if-exists < backups/dispatcher-<time>.dump`
+  and unpack the matching photo archive into the `photos_data` volume.
 
 ## Credentials and real records
 
 Never put credentials in `NEXT_PUBLIC_*`, source files, command output, Git,
-or deployment artifacts. The first successful login creates the dispatcher
-account using `INITIAL_ADMIN_EMAIL` and `INITIAL_ADMIN_PASSWORD`. Once the
-account exists, the initial password is never accepted again; only the
-account's own password signs in. After signing in, remove
-`INITIAL_ADMIN_PASSWORD` from the deployment environment and keep
-`INITIAL_ADMIN_EMAIL` unchanged.
-
-To recover a lost password, reset it on the server. This signs out every
-existing session:
+or deployment artifacts. To recover a lost password, reset it on the server;
+this signs out every session:
 
 ```sh
 docker compose exec -e ADMIN_NEW_PASSWORD='<new password>' app node scripts/reset-admin-password.mjs
 ```
 
-The local Compose database is a named Docker volume and starts empty. The
-Warehouse snapshot lives in Supabase and is imported with **Sync Warehouse
-now**; schema migrations do not copy it automatically. Never remove the
-`postgres_data` volume to stop synchronization. Supabase sync uses stable
-source IDs and reconciles imported shifts and absences in a transaction.
-Flexpedia employee synchronization preserves local worker IDs and all shift
-relationships. Employment status changes are made manually in the dispatcher,
-independently of contract presence or status in Flexpedia.
-
-Workday photos are stored as private PostgreSQL `BYTEA` data. Listing,
-uploading, viewing, and deleting them require an authenticated session; only
-JPEG, PNG, and WebP content is accepted, up to 10 MiB per photo. They are not
-included in the share/screenshot view.
+The `postgres_data` and `photos_data` volumes persist across restarts. A
+Docker volume is persistent storage, not a backup and not encryption: keep
+the off-site backups, restrict SSH and Docker access, and keep the host
+firewall closed except for the reverse proxy.
