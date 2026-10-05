@@ -14,6 +14,9 @@ const securityHeaders = [
 const nextConfig = {
   output: 'standalone',
   poweredByHeader: false,
+  // Kept out of the bundle so the standalone image ships it in node_modules:
+  // scripts/reset-admin-password.mjs imports it directly on the server.
+  serverExternalPackages: ['bcryptjs'],
   images: {
     unoptimized: true,
   },

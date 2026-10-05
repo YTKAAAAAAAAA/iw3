@@ -55,3 +55,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build --tag dispatcher:ci .
+      # The image must carry everything the server-side scripts import.
+      - run: docker run --rm --entrypoint node dispatcher:ci -e "import('bcryptjs').then(() => import('pg')).then(() => console.log('script dependencies present'))"
