@@ -65,10 +65,14 @@ export async function login(_previous: LoginState, formData: FormData): Promise<
 
   const token = await createSessionToken(result.userId, result.sessionVersion)
   const store = await cookies()
+  // Safari drops a Secure cookie on plain http://localhost, which signed the
+  // user out on the next page. Mark it Secure only when the request really
+  // came over HTTPS — directly or through the proxy in front of the app.
+  const isHttps = requestHeaders.get('x-forwarded-proto')?.split(',')[0]?.trim() === 'https'
   store.set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    secure: isHttps,
     maxAge: SESSION_TTL_SECONDS,
     path: '/',
   })
