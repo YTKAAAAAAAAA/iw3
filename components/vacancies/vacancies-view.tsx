@@ -1,6 +1,7 @@
 'use client'
 
 import { AppShell, Badge, PageHeading, Panel, StateBlock } from '@/components/app-shell'
+import { CompanyAvatar } from '@/components/company-avatar'
 import { useWorkforceData } from '@/components/workforce-data-context'
 import { sortByUrgency, urgencyNote, vacancyStatus, vacancyUrgency } from '@/lib/derive'
 import { useLanguage } from '@/lib/i18n'
@@ -48,7 +49,7 @@ export function VacanciesView() {
               aria-label={t('Company filter')}
             >
               <option value="all">{t('All companies')}</option>
-              {companies.map(company => (
+              {companies.filter(company => !company.archivedAt).map(company => (
                 <option key={company.id} value={company.id}>
                   {company.name}
                 </option>
@@ -75,7 +76,10 @@ export function VacanciesView() {
                     <Briefcase />
                   </div>
                   <div>
-                    <strong>{v.title}</strong>
+                    <strong className="vacancy-title">
+                      {v.title}
+                      <CompanyAvatar company={companies.find(c => c.id === v.companyId)} />
+                    </strong>
                     <span>{joinDetails(companies.find(c => c.id === v.companyId)?.name, v.address)}</span>
                   </div>
                   <Badge

@@ -109,7 +109,9 @@ export async function POST(request: Request) {
     const result = await withDb(async db => {
       await db.query('BEGIN')
       try {
-        const company = await db.query<{ name: string }>('SELECT name FROM company WHERE id = $1', [companyId])
+        const company = await db.query<{ name: string }>(
+          'SELECT name FROM company WHERE id = $1 AND archived_at IS NULL', [companyId],
+        )
         if (!company.rows[0]) {
           await db.query('ROLLBACK')
           return null

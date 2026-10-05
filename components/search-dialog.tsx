@@ -72,7 +72,7 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
       href: `/people/${w.id}`,
     }))
     const orgs: Hit[] = companies
-      .filter(c => c.name.toLowerCase().includes(q) || c.contactPerson?.toLowerCase().includes(q))
+      .filter(c => !c.archivedAt && (c.name.toLowerCase().includes(q) || c.contactPerson?.toLowerCase().includes(q)))
       .slice(0, 6)
       .map(c => ({
         id: c.id,

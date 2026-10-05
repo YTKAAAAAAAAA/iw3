@@ -11,7 +11,7 @@ import { useState } from 'react'
 export function AddManualWorkerDialog({ onClose }: { onClose: () => void }) {
   const { t } = useLanguage()
   const router = useRouter()
-  const { companies } = useWorkforceData()
+  const companies = useWorkforceData().companies.filter(company => !company.archivedAt)
   const [fullName, setFullName] = useState('')
   const [companyIds, setCompanyIds] = useState<string[]>([])
   const [conflicts, setConflicts] = useState<Array<{ id: number; fullName: string }>>([])

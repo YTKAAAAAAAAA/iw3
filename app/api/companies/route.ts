@@ -35,6 +35,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ company: {
       id: `c-${rows[0].id}`, name: rows[0].name,
       contactPerson: rows[0].contact_person, phone: rows[0].phone, notes: rows[0].notes,
+      logoUrl: null, archivedAt: null,
     } }, { status: 201 })
   } catch (error) {
     if (typeof error === 'object' && error !== null && 'code' in error && error.code === '23505') {

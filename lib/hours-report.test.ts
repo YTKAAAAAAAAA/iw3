@@ -30,7 +30,7 @@ const vacancy = (defaultHours: number | null): Vacancy => ({
 })
 
 const input = (over: Partial<ReportInput> = {}): ReportInput => ({
-  vacancy: vacancy(8), company: { id: 'c-1', name: 'Amsterdam Warehouse & Company', contactPerson: null, phone: null, notes: null, logoUrl: null },
+  vacancy: vacancy(8), company: { id: 'c-1', name: 'Amsterdam Warehouse & Company', contactPerson: null, phone: null, notes: null, logoUrl: null, archivedAt: null },
   workers: [worker('w-1', 'Andrii', 'Kotiuk'), worker('w-2', 'Sofia', 'Meer', 'van der')],
   entries: [], roster: [], ...WEEK, ...over,
 })

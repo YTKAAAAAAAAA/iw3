@@ -326,10 +326,13 @@ async function syncSnapshot(db: PoolClient, snapshot: SourceSnapshot): Promise<W
       }
     }
     workerIds.set(source.id, localId)
-    await db.query(
-      'INSERT INTO worker_company_access (worker_id, company_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-      [localId, vacancy.rows[0].company_id],
-    )
+    // An archived company has had everyone detached on purpose; the hourly
+    // sync must not attach them back.
+    await db.query(`
+      INSERT INTO worker_company_access (worker_id, company_id)
+      SELECT $1, c.id FROM company c WHERE c.id = $2 AND c.archived_at IS NULL
+      ON CONFLICT DO NOTHING
+    `, [localId, vacancy.rows[0].company_id])
     const currentDays = courseDaysByWorker.get(localId) ?? []
     if (!sameStringValues(currentDays, days)) {
       await db.query('DELETE FROM worker_course_day WHERE worker_id = $1', [localId])

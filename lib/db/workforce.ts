@@ -3,6 +3,7 @@ import type { PoolClient } from 'pg'
 import { assertSession } from '@/lib/auth/guard'
 import { withDb } from '@/lib/db'
 import { normalizeAddress } from '@/lib/travel/address'
+import { companyLogoUrl } from '@/lib/company-logo'
 import {
   addDays,
   initialsFor,
@@ -60,7 +61,9 @@ async function loadWorkers(db: PoolClient): Promise<Worker[]> {
       FROM worker ORDER BY id
     `),
     db.query<{ worker_id: number; company_id: number }>(
-      'SELECT worker_id, company_id FROM worker_company_access ORDER BY worker_id, company_id',
+      `SELECT a.worker_id, a.company_id FROM worker_company_access a
+       JOIN company c ON c.id = a.company_id AND c.archived_at IS NULL
+       ORDER BY a.worker_id, a.company_id`,
     ),
     db.query<{ worker_id: number; weekday: Worker['courseDays'][number] }>(
       'SELECT worker_id, weekday FROM worker_course_day ORDER BY worker_id, weekday',
@@ -125,7 +128,12 @@ async function loadCompaniesAndVacancies(
       phone: string | null
       notes: string | null
       logo_url: string | null
-    }>('SELECT id, name, contact_person, phone, notes, logo_url FROM company ORDER BY name, id'),
+      archived_at: string | null
+      logo_key: string | null
+    }>(`
+      SELECT id, name, contact_person, phone, notes, logo_url, archived_at::text AS archived_at, logo_key
+      FROM company ORDER BY name, id
+    `),
     db.query<{
       id: number
       slug: string
@@ -168,7 +176,8 @@ async function loadCompaniesAndVacancies(
     contactPerson: company.contact_person,
     phone: company.phone,
     notes: company.notes,
-    logoUrl: company.logo_url,
+    logoUrl: companyLogoUrl(company.id, company.logo_key, company.logo_url),
+    archivedAt: company.archived_at,
   }))
   const vacancies = vacancyResult.rows.map((row): Vacancy => {
     const pattern = row.schedule_pattern

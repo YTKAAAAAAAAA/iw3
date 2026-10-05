@@ -21,11 +21,14 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   }
   const workerId = Number(id)
   const companyId = Number(body.companyId.slice(2))
-  const exists = await withDb(db => db.query<{ id: number }>(`
-    SELECT w.id FROM worker w CROSS JOIN company c
+  const exists = await withDb(db => db.query<{ archived: boolean }>(`
+    SELECT c.archived_at IS NOT NULL AS archived FROM worker w CROSS JOIN company c
     WHERE w.id = $1 AND c.id = $2
   `, [workerId, companyId]))
   if (!exists.rows[0]) return NextResponse.json({ error: 'Worker or company not found.' }, { status: 404 })
+  if (body.accessible && exists.rows[0].archived) {
+    return NextResponse.json({ error: 'This company is archived.' }, { status: 409 })
+  }
 
   if (body.accessible) {
     await withDb(db => db.query(`

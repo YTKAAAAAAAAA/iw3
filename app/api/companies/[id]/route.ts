@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth/guard'
 import { withDb } from '@/lib/db'
+import { companyLogoUrl } from '@/lib/company-logo'
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!await getSession()) return NextResponse.json({ error: 'Authentication required.' }, { status: 401 })
@@ -38,17 +39,19 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   try {
     const { rows } = await withDb(db => db.query<{
       id: number; name: string; contact_person: string | null; phone: string | null; notes: string | null
+      archived_at: string | null; logo_key: string | null; logo_url: string | null
     }>(`
       UPDATE company
       SET name = $2, contact_person = $3, phone = $4, notes = $5
       WHERE id = $1
-      RETURNING id, name, contact_person, phone, notes
+      RETURNING id, name, contact_person, phone, notes, archived_at::text AS archived_at, logo_key, logo_url
     `, [Number(match[1]), fields.name, fields.contactPerson, fields.phone, fields.notes]))
     if (!rows[0]) return NextResponse.json({ error: 'Company not found.' }, { status: 404 })
     const company = rows[0]
     return NextResponse.json({ company: {
       id: `c-${company.id}`, name: company.name,
       contactPerson: company.contact_person, phone: company.phone, notes: company.notes,
+      logoUrl: companyLogoUrl(company.id, company.logo_key, company.logo_url), archivedAt: company.archived_at,
     } })
   } catch (error) {
     if (typeof error === 'object' && error !== null && 'code' in error && error.code === '23505') {

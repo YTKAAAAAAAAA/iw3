@@ -14,7 +14,7 @@ export function VacancyForm() {
   const { t } = useLanguage()
   const today = useToday()
   const router = useRouter()
-  const { companies } = useWorkforceData()
+  const companies = useWorkforceData().companies.filter(company => !company.archivedAt)
   const [draft, setDraft] = useState<VacancyDraft>({
     title: '',
     companyId: companies[0]?.id ?? '',

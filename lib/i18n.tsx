@@ -351,8 +351,19 @@ const dutch: Record<string, string> = {
   'Contact person': 'Contactpersoon',
   Name: 'Naam',
   Notes: 'Notities',
-  'Logo uploads are not available yet.': "Logo's uploaden is nog niet mogelijk.",
+  'Save the company first, then add its logo.': 'Sla het bedrijf eerst op en voeg daarna het logo toe.',
+  'Upload logo': 'Logo uploaden',
+  'Replace logo': 'Logo vervangen',
+  'Remove logo': 'Logo verwijderen',
   'Save company': 'Bedrijf opslaan',
+  'Archive company': 'Bedrijf archiveren',
+  'Archive {name}? {people} people lose access and {vacancies} open vacancies are archived. Shifts and hours stay in history, and the company can be restored.':
+    '{name} archiveren? {people} medewerkers verliezen toegang en {vacancies} open vacatures worden gearchiveerd. Diensten en uren blijven bewaard en het bedrijf kan worden hersteld.',
+  'Archived companies': 'Gearchiveerde bedrijven',
+  'Hidden from every list. Their vacancies, shifts and hours stay in history.':
+    'Verborgen in alle lijsten. Hun vacatures, diensten en uren blijven bewaard.',
+  'Archived {date}': 'Gearchiveerd op {date}',
+  '{name} is archived. Restore the company first.': '{name} is gearchiveerd. Herstel eerst het bedrijf.',
   'Time tracking': 'Urenregistratie',
   'Enter manual hours for active, non-archived vacancies.':
     'Voer handmatig uren in voor actieve, niet-gearchiveerde vacatures.',

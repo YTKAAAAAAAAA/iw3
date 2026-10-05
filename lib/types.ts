@@ -51,7 +51,8 @@ export type TravelDistance = { workerId: string; vacancyId: string; km: number; 
 /** Where a worker lives, rounded to about a kilometre: enough for the map,
  *  not an address. */
 export type HomeArea = { workerId: string; lat: number; lon: number }
-export type Company = { id:string; name:string; contactPerson:string|null; phone:string|null; notes:string|null; logoUrl:string|null }
+/** `archivedAt` set: hidden from every picker, kept so history can still name it. */
+export type Company = { id:string; name:string; contactPerson:string|null; phone:string|null; notes:string|null; logoUrl:string|null; archivedAt:string|null }
 /** A hall or site inside a vacancy — Slego, Conakryweg. Added and removed by
  *  hand as the client opens and closes them. */
 export type VacancyPlace = { id:string; name:string }

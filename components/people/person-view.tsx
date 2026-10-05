@@ -282,7 +282,7 @@ export function PersonView({ id }: { id: string }) {
                   {accessError}
                 </p>
               )}
-              {companies.map(c => (
+              {companies.filter(c => !c.archivedAt).map(c => (
                 <label className="access-toggle" key={c.id}>
                   <span>
                     <strong>{c.name}</strong>

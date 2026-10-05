@@ -84,7 +84,7 @@ export async function POST(request: Request) {
         }
 
         const companies = await db.query<{ id: number }>(
-          'SELECT id FROM company WHERE id = ANY($1::int[])',
+          'SELECT id FROM company WHERE id = ANY($1::int[]) AND archived_at IS NULL',
           [companyNumbers],
         )
         if (companies.rows.length !== companyNumbers.length) {
@@ -126,7 +126,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'The possible matches changed. Review them again before choosing.' }, { status: 409 })
     }
     if (result.kind === 'invalid-company') {
-      return NextResponse.json({ error: 'One or more selected companies no longer exist. Refresh and try again.' }, { status: 400 })
+      return NextResponse.json({ error: 'One or more selected companies no longer exist or were archived. Refresh and try again.' }, { status: 400 })
     }
     if (result.kind === 'already-resolved') {
       return NextResponse.json({ worker: result.worker, alreadyResolved: true }, { status: 200 })

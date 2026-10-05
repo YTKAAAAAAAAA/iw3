@@ -56,6 +56,17 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ sl
   if (Object.keys(body).length === 1 && typeof body.archived === 'boolean') {
     try {
       const archived = body.archived
+      if (!archived) {
+        const { rows: hidden } = await withDb(db => db.query<{ name: string }>(`
+          SELECT c.name FROM vacancy v JOIN company c ON c.id = v.company_id
+          WHERE v.slug = $1 AND c.archived_at IS NOT NULL
+        `, [slug]))
+        if (hidden[0]) {
+          return NextResponse.json(
+            { error: `${hidden[0].name} is archived. Restore the company first.` }, { status: 409 },
+          )
+        }
+      }
       const { rows } = await withDb(db => db.query<{ slug: string; archived_at: string | null }>(`
         UPDATE vacancy
         SET is_active = NOT $2,
@@ -126,19 +137,26 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ sl
       await db.query('BEGIN')
       try {
         const current = await db.query<{
-          id: number; slug: string; worksite_address: string | null; latitude: number | null; longitude: number | null
+          id: number; slug: string; company_id: number
+          worksite_address: string | null; latitude: number | null; longitude: number | null
         }>(`
-          SELECT id, slug, worksite_address, latitude, longitude
+          SELECT id, slug, company_id, worksite_address, latitude, longitude
           FROM vacancy WHERE slug = $1 FOR UPDATE
         `, [slug])
         if (!current.rows[0]) {
           await db.query('ROLLBACK')
           return { status: 404 as const, error: 'Vacancy not found.' }
         }
-        const company = await db.query<{ name: string }>('SELECT name FROM company WHERE id = $1', [Number(companyMatch[1])])
+        const company = await db.query<{ name: string; archived: boolean }>(
+          'SELECT name, archived_at IS NOT NULL AS archived FROM company WHERE id = $1', [Number(companyMatch[1])],
+        )
         if (!company.rows[0]) {
           await db.query('ROLLBACK')
           return { status: 400 as const, error: 'Select a company that exists.' }
+        }
+        if (company.rows[0].archived && Number(companyMatch[1]) !== current.rows[0].company_id) {
+          await db.query('ROLLBACK')
+          return { status: 400 as const, error: `${company.rows[0].name} is archived. Choose another company.` }
         }
         const vacancy = current.rows[0]
         const siteRows = await db.query<{ slug: string; name: string }>(`

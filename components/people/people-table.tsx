@@ -68,7 +68,7 @@ export function PeopleTable({ compact = false }: { compact?: boolean }) {
             aria-label={t('Company filter')}
           >
             <option value="all">{t('All companies')}</option>
-            {companies.map(c => (
+            {companies.filter(c => !c.archivedAt).map(c => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>

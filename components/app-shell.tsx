@@ -73,18 +73,24 @@ export function PageHeading({
   title,
   description,
   action,
+  titleAside,
 }: {
   eyebrow: string
   title: string
   description: string
   action?: ReactNode
+  /** Shown right after the title, on the same line. */
+  titleAside?: ReactNode
 }) {
   const { t } = useLanguage()
   return (
     <div className="page-heading">
       <div>
         <p className="eyebrow">{t(eyebrow)}</p>
-        <h1>{t(title)}</h1>
+        <h1 className={titleAside ? 'vacancy-title' : undefined}>
+          {t(title)}
+          {titleAside}
+        </h1>
         <p className="subheading">{t(description)}</p>
       </div>
       {action}

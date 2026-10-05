@@ -6,6 +6,7 @@ import { applyDraft, draftFromVacancy } from '@/components/vacancies/vacancy-dra
 import { VacancyFields } from '@/components/vacancies/vacancy-fields'
 import { VacancySchedule } from '@/components/vacancy-schedule'
 import { useWorkforceData } from '@/components/workforce-data-context'
+import { CompanyAvatar } from '@/components/company-avatar'
 import { describeSchedule, vacancyStatus } from '@/lib/derive'
 import { useLanguage } from '@/lib/i18n'
 import { formatDate } from '@/lib/types'
@@ -166,7 +167,9 @@ export function VacancyView({ id }: { id: string }) {
     }
   }
   const status = vacancyStatus(v, standing, roster, today)
+  const company = companies.find(c => c.id === v.companyId)
   const canRestore = v.archivedAt !== null && v.archivedAt !== undefined && (!v.endDate || v.endDate >= today)
+    && !company?.archivedAt
   const ended = status === 'archived' && !canRestore
   return (
     <AppShell title="Vacancy">
@@ -177,7 +180,8 @@ export function VacancyView({ id }: { id: string }) {
         <PageHeading
           eyebrow="Vacancy detail"
           title={v.title}
-          description={companies.find(c => c.id === v.companyId)?.name ?? ''}
+          description={company?.name ?? ''}
+          titleAside={<CompanyAvatar company={company} />}
           action={
             <div className="vacancy-detail-meta">
               <Badge tone={status === 'archived' ? 'neutral' : status === 'open' ? 'orange' : 'green'}>
@@ -242,6 +246,9 @@ export function VacancyView({ id }: { id: string }) {
           )}
           {ended && v.endDate && v.endDate < today && (
             <p className="field-hint">{t('This vacancy ended. Update its end date before restoring it.')}</p>
+          )}
+          {status === 'archived' && company?.archivedAt && (
+            <p className="field-hint">{t('{name} is archived. Restore the company first.', { name: company.name })}</p>
           )}
           {editing ? (
             <div className="vacancy-editor">

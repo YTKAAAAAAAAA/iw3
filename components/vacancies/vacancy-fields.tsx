@@ -42,7 +42,7 @@ export function VacancyFields({
       <label>
         {t('Company')}
         <select value={draft.companyId} onChange={e => set({ companyId: e.target.value })}>
-          {companies.map(c => (
+          {companies.filter(c => !c.archivedAt || c.id === draft.companyId).map(c => (
             <option key={c.id} value={c.id}>
               {c.name}
             </option>
