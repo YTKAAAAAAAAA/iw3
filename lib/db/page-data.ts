@@ -2,7 +2,8 @@ import 'server-only'
 
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { WORKFORCE_PARTS, type WorkforceData, type WorkforceScope } from '@/components/workforce-data-context'
+import type { WorkforceData, WorkforceScope } from '@/components/workforce-data-context'
+import { WORKFORCE_PARTS } from '@/lib/workforce-parts'
 import { SESSION_COOKIE } from '@/lib/auth/session'
 import { loadWorkforceData } from './workforce'
 

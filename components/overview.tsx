@@ -118,7 +118,7 @@ export function Overview() {
               <Link className="availability-row" href={`/people/${w.id}`} key={w.id}>
                 <div>
                   <strong>{w.fullName}</strong>
-                  <span>{[w.city, t('Available today')].filter(Boolean).join(' · ')}</span>
+                  <span>{[w.postCode, t('Available today')].filter(Boolean).join(' · ')}</span>
                 </div>
                 <Badge tone="green">{t('Free')}</Badge>
               </Link>

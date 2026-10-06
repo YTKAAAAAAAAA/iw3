@@ -66,7 +66,7 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
       id: w.id,
       kind: 'person',
       title: w.fullName,
-      subtitle: [w.status === 'dismissed' ? 'Dismissed' : null, w.city || 'No city on file']
+      subtitle: [w.status === 'dismissed' ? 'Dismissed' : null, w.postCode || 'No postcode on file']
         .filter(Boolean)
         .join(' · '),
       href: `/people/${w.id}`,

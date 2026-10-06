@@ -120,7 +120,10 @@ export function PersonView({ id }: { id: string }) {
         <PageHeading
           eyebrow="Worker profile"
           title={w.fullName}
-          description={joinDetails(w.city, details?.email)}
+          description={joinDetails(
+            w.postCode,
+            details?.age != null ? t('{count} years old', { count: details.age }) : null,
+          )}
           action={
             <Badge tone={w.status === 'active' ? 'green' : 'neutral'}>
               {t(w.status === 'active' ? 'Active' : 'Dismissed')}
@@ -133,28 +136,14 @@ export function PersonView({ id }: { id: string }) {
               <div className="profile-hero">
                 <div>
                   <h2>{w.fullName}</h2>
-                  <p>{joinDetails(w.initials, details?.nationality)}</p>
                 </div>
               </div>
               <div className="detail-grid">
+                {/* Of the personal data only the postcode and the age are shown;
+                    the rest stays in the database (see PersonalDetails). */}
                 {[
-                  ['First name', w.firstName],
-                  ['Insertion', w.insertion],
-                  ['Last name', w.lastName],
-                  ['Gender', details?.gender ? t(details.gender === 'm' ? 'Male' : 'Female') : null],
-                  ['Birth date', details?.birthDate ? formatDate(details.birthDate) : null],
-                  [
-                    'Address',
-                    [
-                      details?.street,
-                      [details?.streetNumber, details?.streetNumberAddition].filter(Boolean).join(''),
-                    ]
-                      .filter(Boolean)
-                      .join(' '),
-                  ],
-                  ['Postcode / city', joinDetails(details?.postCode, w.city)],
-                  ['Residence country', details?.residenceCountry],
-                  ['Nationality', details?.nationality],
+                  ['Postcode', w.postCode],
+                  ['Age', details?.age != null ? String(details.age) : null],
                   [
                     'Course days',
                     <div className="seg seg-small course-days" key="course">
@@ -248,9 +237,6 @@ export function PersonView({ id }: { id: string }) {
                       </button>
                     </div>,
                   ],
-                  ['Phone', details?.phone],
-                  ['Mobile', details?.mobile],
-                  ['Email', details?.email],
                 ].map(([label, value]) => (
                   <div key={label as string}>
                     <span>{t(label as string)}</span>
@@ -262,7 +248,7 @@ export function PersonView({ id }: { id: string }) {
                   </div>
                 ))}
               </div>
-              {!details?.street && (
+              {details && !details.hasHomeAddress && (
                 <div className="inline-note">
                   <MapPin />
                   {t(

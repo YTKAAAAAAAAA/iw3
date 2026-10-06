@@ -18,8 +18,9 @@ export type Worker = {
   insertion: string | null
   lastName: string
   fullName: string
-  /** Town only — enough to plan travel, not enough to find the house. */
-  city: string | null
+  /** The postcode is the one part of where somebody lives that the site
+   *  shows. Street, house number, town and country stay in the database. */
+  postCode: string | null
   hasCar: boolean | null
   /** A bike of their own: enough for a site in town, not for a car-only one. */
   hasBike: boolean | null
@@ -29,22 +30,16 @@ export type Worker = {
   dismissedAt: ISODate | null
   companyAccess: string[]
 }
-/** Contact and identity details. Loaded only on the person's own profile page,
- *  never in the lists that every page carries. */
+/** What the person's own profile page gets beyond the lists. Personal data
+ *  stays on the server: the age is worked out there, so the birth date never
+ *  reaches a browser, and of the address only "is there one" does — the
+ *  travel distances need it. Gender, nationality, country, phone and email
+ *  are kept in the database (Flexpedia sync) and not sent at all. */
 export type PersonalDetails = {
   workerId: string
-  gender: 'm' | 'f' | null
-  birthDate: ISODate | null
-  street: string | null
-  streetNumber: string | null
-  streetNumberAddition: string | null
-  postCode: string | null
-  residenceCountry: string | null
-  nationality: string | null
-  phone: string | null
-  phoneCountry: string | null
-  mobile: string | null
-  email: string | null
+  /** Whole years as of today, from the birth date on file. */
+  age: number | null
+  hasHomeAddress: boolean
   notes: string
 }
 /** Road distance from a worker's home to a vacancy, computed once per address
@@ -223,6 +218,12 @@ export type Leave = { id:string; workerId:string; date:ISODate; reason:string; p
 export type HoursEntry = { id:string; workerId:string; vacancyId:string; date:ISODate; hours:number; manual?:boolean }
 export type SyncStatus = { source:'supabase'|'flexpedia'; configured:boolean; enabled:boolean; lastSyncAt:ISODateTime|null; lastError:string|null }
 export type DayState = 'working'|'leave'|'free'
+/** Whole years from a birth date to a day; a birthday counts from its own day. */
+export function ageOn(birthDate: ISODate, today: ISODate): number {
+  const [by, bm, bd] = birthDate.split('-').map(Number)
+  const [ty, tm, td] = today.split('-').map(Number)
+  return ty - by - (tm < bm || (tm === bm && td < bd) ? 1 : 0)
+}
 export function todayInAmsterdam(now = new Date()): ISODate {
   const parts = new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Europe/Amsterdam',

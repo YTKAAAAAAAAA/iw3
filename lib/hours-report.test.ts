@@ -10,7 +10,7 @@ const WEEK = { year: 2024, week: 25 }
 
 const worker = (id: string, firstName: string, lastName: string, insertion: string | null = null): Worker => ({
   id, flexpediaId: null, initials: 'XX', firstName, insertion, lastName,
-  fullName: [firstName, insertion, lastName].filter(Boolean).join(' '), city: null,
+  fullName: [firstName, insertion, lastName].filter(Boolean).join(' '), postCode: null,
   hasCar: true, hasBike: null, hasVog: true, courseDays: [], status: 'active', dismissedAt: null, companyAccess: ['c-1'],
 })
 const shift = (workerId: string, date: string, outcome: RosterEntry['outcome'] = 'planned'): RosterEntry => ({

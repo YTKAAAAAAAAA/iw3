@@ -7,7 +7,9 @@ import { normalizeAddress } from '@/lib/travel/address'
 import { companyLogoUrl } from '@/lib/company-logo'
 import {
   addDays,
+  ageOn,
   initialsFor,
+  todayInAmsterdam,
   WEEKDAYS,
   type Company,
   type Demand,
@@ -56,12 +58,12 @@ async function loadWorkers(db: PoolClient): Promise<Worker[]> {
       flexpedia_first_name: string | null
       flexpedia_insertion: string | null
       flexpedia_last_name: string | null
-      flexpedia_city: string | null
+      flexpedia_post_code: string | null
       dismissed_at: string | null
     }>(`
       SELECT id, full_name, fixed_course_days, is_active, is_fired, flexpedia_id,
         flexpedia_initials, flexpedia_first_name, flexpedia_insertion, flexpedia_last_name,
-        flexpedia_city, dismissed_at::text
+        flexpedia_post_code, dismissed_at::text
       FROM worker ORDER BY id
     `),
     () => db.query<{ worker_id: number; company_id: number }>(
@@ -110,7 +112,7 @@ async function loadWorkers(db: PoolClient): Promise<Worker[]> {
         (worker.flexpedia_id !== null ? null : parts.length > 2 ? parts.slice(1, -1).join(' ') : null),
       lastName: worker.flexpedia_last_name ?? (parts.length > 1 ? parts[parts.length - 1] : ''),
       fullName: worker.full_name,
-      city: worker.flexpedia_city,
+      postCode: worker.flexpedia_post_code,
       hasCar: qualifications.get(worker.id)?.get('transport:Own car') ?? null,
       hasBike: qualifications.get(worker.id)?.get('transport:Bike') ?? null,
       hasVog: qualifications.get(worker.id)?.get('document:VOG on file') ?? null,
@@ -499,29 +501,13 @@ async function loadTravel(db: PoolClient): Promise<{ travel: TravelDistance[]; h
   }
 }
 
+/* Only what the profile shows leaves this function: an age instead of the
+   birth date, and whether there is a home address instead of the address. */
 async function loadPersonalDetails(db: PoolClient, workerId: string): Promise<PersonalDetails | null> {
-  const { rows } = await db.query<{
-    gender: 'm' | 'f' | null
-    birth_date: string | null
-    street: string | null
-    street_number: string | null
-    street_number_addition: string | null
-    post_code: string | null
-    residence_country: string | null
-    nationality: string | null
-    phone: string | null
-    phone_country: string | null
-    mobile: string | null
-    email: string | null
-    notes: string | null
-  }>(
+  const { rows } = await db.query<{ birth_date: string | null; has_home_address: boolean; notes: string | null }>(
     `
-    SELECT flexpedia_gender AS gender, flexpedia_birth_date::text AS birth_date,
-      flexpedia_street AS street, flexpedia_street_number AS street_number,
-      flexpedia_street_number_addition AS street_number_addition, flexpedia_post_code AS post_code,
-      flexpedia_residence_country AS residence_country, flexpedia_nationality AS nationality,
-      flexpedia_phone AS phone, flexpedia_phone_country AS phone_country, flexpedia_mobile AS mobile,
-      flexpedia_email AS email, notes
+    SELECT flexpedia_birth_date::text AS birth_date,
+      COALESCE(btrim(home_address), '') <> '' AS has_home_address, notes
     FROM worker WHERE id = $1
   `,
     [Number(workerId)],
@@ -530,18 +516,8 @@ async function loadPersonalDetails(db: PoolClient, workerId: string): Promise<Pe
   if (!row) return null
   return {
     workerId,
-    gender: row.gender,
-    birthDate: row.birth_date,
-    street: row.street,
-    streetNumber: row.street_number,
-    streetNumberAddition: row.street_number_addition,
-    postCode: row.post_code,
-    residenceCountry: row.residence_country,
-    nationality: row.nationality,
-    phone: row.phone,
-    phoneCountry: row.phone_country,
-    mobile: row.mobile,
-    email: row.email,
+    age: row.birth_date ? ageOn(row.birth_date, todayInAmsterdam()) : null,
+    hasHomeAddress: row.has_home_address,
     notes: row.notes ?? '',
   }
 }

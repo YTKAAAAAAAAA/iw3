@@ -6,8 +6,8 @@ import type { AppData, Demand, HomeArea, Offer, PersonalDetails, TravelDistance 
 /** What a page can ask for on top of the base data (people, companies,
  *  vacancies and sync status). Each page loads only the parts it shows, so
  *  schedule history and personal details are not sent where they are unused. */
-export const WORKFORCE_PARTS = ['schedule', 'leaves', 'hours', 'travel'] as const
-export type WorkforcePart = (typeof WORKFORCE_PARTS)[number]
+export { WORKFORCE_PARTS, type WorkforcePart } from '@/lib/workforce-parts'
+import type { WorkforcePart } from '@/lib/workforce-parts'
 
 export type WorkforceScope = {
   include?: WorkforcePart[]

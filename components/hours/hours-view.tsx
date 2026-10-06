@@ -163,7 +163,7 @@ export function HoursView() {
                         <Link className="person-cell" href={`/people/${w.id}`}>
                           <span>
                             <strong>{w.fullName}</strong>
-                            <small>{w.city}</small>
+                            <small>{w.postCode}</small>
                           </span>
                         </Link>
                       </td>

@@ -33,7 +33,7 @@ export function DismissedList() {
                 <Link className="person-cell" href={`/people/${w.id}`}>
                   <span>
                     <strong>{w.fullName}</strong>
-                    {w.city && <small>{w.city}</small>}
+                    {w.postCode && <small>{w.postCode}</small>}
                   </span>
                 </Link>
               </td>

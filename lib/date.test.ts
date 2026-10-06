@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { formatDate, formatDateTime, formatShortDate, formatTimeOfDay, todayInAmsterdam } from './types.ts'
+import { ageOn, formatDate, formatDateTime, formatShortDate, formatTimeOfDay, todayInAmsterdam } from './types.ts'
 
 test('today follows the Amsterdam calendar date across the UTC date boundary', () => {
   assert.equal(todayInAmsterdam(new Date('2026-09-26T21:59:00.000Z')), '2026-09-26')
@@ -32,4 +32,11 @@ test('typed dates are read day first in every common form', async () => {
   assert.equal(parseDate('31.02.2026'), null)
   assert.equal(parseDate('10/6'), null)
   assert.equal(parseDate(''), null)
+})
+
+test('age counts whole years and turns over on the birthday itself', () => {
+  assert.equal(ageOn('1990-10-06', '2026-10-05'), 35)
+  assert.equal(ageOn('1990-10-06', '2026-10-06'), 36)
+  assert.equal(ageOn('2000-02-29', '2026-02-28'), 25)
+  assert.equal(ageOn('2000-02-29', '2026-03-01'), 26)
 })

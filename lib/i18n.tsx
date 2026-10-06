@@ -43,6 +43,8 @@ const dutch: Record<string, string> = {
   Vacancy: 'Vacature',
   Dismissed: 'Uit dienst',
   'No city on file': 'Geen woonplaats bekend',
+  'No postcode on file': 'Geen postcode bekend',
+  '{count} years old': '{count} jaar',
   'No contact on file': 'Geen contactpersoon bekend',
   'Light theme': 'Licht thema',
   'Dark theme': 'Donker thema',
@@ -533,6 +535,10 @@ const dutch: Record<string, string> = {
     'Alleen beschikbare mensen',
   'Own transport':
     'Eigen vervoer',
+  // The profile's personal data: postcode and age only.
+  Postcode: 'Postcode',
+  Age: 'Leeftijd',
+  'Course days': 'Cursusdagen',
   'Remove {slot} on {date}? The {count} people on it are taken off too.':
     '{slot} op {date} verwijderen? De {count} ingeplande mensen worden ook verwijderd.',
   'Search a name':

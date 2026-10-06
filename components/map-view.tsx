@@ -420,7 +420,7 @@ export function MapPanel({ vacancyId }: { vacancyId?: string }) {
                     {joinDetails(
                       `${travel.km} km`,
                       `${travel.minutes} min`,
-                      worker.city,
+                      worker.postCode,
                       worker.hasCar && t('car'),
                     )}
                   </small>
