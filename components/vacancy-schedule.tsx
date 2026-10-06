@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
+  CalendarDays,
   ChevronLeft,
   ChevronRight,
   Download,
@@ -18,15 +19,17 @@ import { Badge, Panel, StateBlock, TimeField, useExit } from './app-shell'
 import { useWorkforceData } from './workforce-data-context'
 import type { CandidateVisibility } from './workforce-data-context'
 import {
-  alreadyOnVacancy,
   assignmentOn,
   availabilityLabel,
   availabilityOver,
   blockOn,
   endFor,
   isCourseDay,
-  shiftsOverlap,
+  dayNeed,
+  patternNeed,
+  sameDayClash,
   slotTimeLabel,
+  timeRange,
   startFor,
   timingOf,
 } from '@/lib/derive'
@@ -35,6 +38,11 @@ import { assessRequirements } from '@/lib/requirement-fit'
 import { addDays, formatDate, isoWeek, weekDates, weekdayLabel, weekdayOf, WEEKDAYS } from '@/lib/types'
 import type { Demand, Offer, RosterEntry, StandingAssignment, Vacancy, Weekday, Worker } from '@/lib/types'
 import { WorkdayReport } from './workday-report'
+import { DayReportCard, ScheduleMonth, useDayPhotos } from './schedule-month'
+import { PeoplePicker } from './schedule-picker'
+import { useConfirm } from './confirm-dialog'
+import { DateField } from './date-field'
+import { demandRow, diffSchedule, mergeSchedule, rosterRows, type RosterRow, type ScheduleState } from '@/lib/schedule-sync'
 import { useLanguage } from '@/lib/i18n'
 import { useToday } from '@/lib/today'
 
@@ -147,6 +155,22 @@ function parseSavedSchedule(value: unknown, vacancyId: string): SavedSchedule | 
   }
 }
 
+/** "October 2026" / "Oktober 2026" — capitalised in Dutch too, as a heading. */
+const monthTitle = (anchor: string, locale: string) => {
+  const label = new Date(`${anchor}T12:00:00Z`).toLocaleDateString(locale === 'nl' ? 'nl-NL' : 'en-GB', {
+    month: 'long',
+    year: 'numeric',
+  })
+  return label[0].toUpperCase() + label.slice(1)
+}
+
+/** A short id for something not saved yet; the server swaps in its own.
+ *  Ids used to be built from the vacancy's slug, the place's slug and the
+ *  date — over the 120 characters the server accepts for a long vacancy
+ *  name, which refused a whole "Create shifts" and undid it. */
+let tempCounter = 0
+const tempId = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${(tempCounter++).toString(36)}-${Math.random().toString(36).slice(2, 6)}`
+
 const storedId = (id: string) => /^[1-9]\d{0,14}$/.test(id)
 
 const isISODate = (value: string | null): value is string => {
@@ -157,7 +181,7 @@ const isISODate = (value: string | null): value is string => {
 
 const placeName = (v: Vacancy, id: string | null) =>
   id ? (v.places.find(p => p.id === id)?.name ?? id) : null
-const slotTitle = (v: Vacancy, row: Demand) =>
+const slotTitle = (v: Vacancy, row: { placeId: string | null; section: string | null }) =>
   [placeName(v, row.placeId), row.section].filter(Boolean).join(' · ') || 'Whole site'
 const sameSlot = (
   a: { placeId: string | null; section: string | null },
@@ -208,19 +232,20 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
   const [loadRetry, setLoadRetry] = useState(0)
   const [saveRetry, setSaveRetry] = useState(0)
   const revisionRef = useRef(0)
-  const latestScheduleRef = useRef<{
-    demand: Demand[]
-    roster: RosterEntry[]
-    standing: StandingAssignment[]
-    offers: Offer[]
+  /* What the server holds, as far as this page knows — the last load or save.
+     A save sends only what differs from it (lib/schedule-sync.ts), so a row
+     changed elsewhere is never written back over by this page. */
+  const baseRef = useRef<ScheduleState | null>(null)
+  const latestRef = useRef<{
+    rows: Demand[]
+    plan: RosterEntry[]
+    arrangements: StandingAssignment[]
+    offerLog: Offer[]
   } | null>(null)
-  const previousDemandRef = useRef<Demand[]>([])
-  const previousRosterRef = useRef<RosterEntry[]>([])
-  const deletedDemandIdsRef = useRef(new Set<string>())
-  const deletedRosterIdsRef = useRef(new Set<string>())
-  const ignoredRosterIdsRef = useRef(new Set<string>())
-  const savedSignatureRef = useRef('')
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve())
+  const staleRetriesRef = useRef(0)
+  const [saveUndone, setSaveUndone] = useState(false)
+  const { confirm, confirmElement } = useConfirm()
   const [offerLog, setOfferLog] = useState<Offer[]>(seedOffers)
   const [openSlot, setOpenSlot] = useState<string | null>(null)
   const [sharing, setSharing] = useState(false)
@@ -234,57 +259,56 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
   /* The schedule is the long part of this page, and most visits are about who
      normally works here rather than about a particular day — so it stays
      folded until asked for. */
-  const [schedule, setSchedule] = useState(false)
+
+  /** This vacancy's part of the page state, in the shape that is compared. */
+  const ownState = (
+    demand: Demand[],
+    roster: RosterEntry[],
+    standing: StandingAssignment[],
+    offers: Offer[],
+  ): ScheduleState => ({
+    demand: demand.filter(row => row.vacancyId === vacancy.id).map(demandRow),
+    roster: rosterRows(roster.filter(row => row.vacancyId === vacancy.id)),
+    standing: standing.filter(row => row.vacancyId === vacancy.id),
+    offers: offers.filter(row => row.vacancyId === vacancy.id),
+  })
+  /** Puts a schedule into the page. Other vacancies' rows stay: they are what
+   *  tells this page who is busy elsewhere. */
+  const adopt = (next: ScheduleState) => {
+    const entry = ({ position: _position, ...row }: RosterRow): RosterEntry => ({
+      ...row,
+      outcome: 'planned',
+      actualEnd: null,
+      coversShiftId: null,
+    })
+    setRows(cur => [...cur.filter(row => row.vacancyId !== vacancy.id), ...next.demand])
+    setPlan(cur => [...cur.filter(row => row.vacancyId !== vacancy.id), ...next.roster.map(entry)])
+    setArrangements(cur => [...cur.filter(row => row.vacancyId !== vacancy.id), ...next.standing])
+    setOfferLog(cur => [...cur.filter(row => row.vacancyId !== vacancy.id), ...next.offers])
+  }
+  const fetchSchedule = async () => {
+    const response = await fetch(`/api/vacancies/${encodeURIComponent(vacancy.id)}/schedule`, { cache: 'no-store' })
+    const result: unknown = await response.json()
+    if (!response.ok)
+      throw new Error(isRecord(result) && typeof result.error === 'string' ? result.error : 'Could not load the schedule.')
+    const snapshot = parseSavedSchedule(result, vacancy.id)
+    if (!snapshot) throw new Error('The server returned an invalid schedule.')
+    return {
+      revision: snapshot.revision,
+      state: ownState(snapshot.demand, snapshot.roster, snapshot.standing, snapshot.offers),
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
     setScheduleReady(false)
     setScheduleLoadError('')
-    fetch(`/api/vacancies/${encodeURIComponent(vacancy.id)}/schedule`, { cache: 'no-store' })
-      .then(async response => {
-        const result: unknown = await response.json()
-        if (!response.ok) {
-          const message =
-            isRecord(result) && typeof result.error === 'string'
-              ? result.error
-              : 'Could not load the schedule.'
-          throw new Error(message)
-        }
-        const snapshot = parseSavedSchedule(result, vacancy.id)
-        if (!snapshot) throw new Error('The server returned an invalid schedule.')
+    fetchSchedule()
+      .then(({ revision, state }) => {
         if (cancelled) return
-
-        const otherDemand = rows.filter(row => row.vacancyId !== vacancy.id)
-        const otherRoster = plan.filter(row => row.vacancyId !== vacancy.id)
-        const otherStanding = arrangements.filter(row => row.vacancyId !== vacancy.id)
-        const otherOffers = offerLog.filter(row => row.vacancyId !== vacancy.id)
-        const nextDemand = [...otherDemand, ...snapshot.demand]
-        const nextRoster = [...otherRoster, ...snapshot.roster]
-        const nextStanding = [...otherStanding, ...snapshot.standing]
-        revisionRef.current = snapshot.revision
-        deletedDemandIdsRef.current.clear()
-        deletedRosterIdsRef.current.clear()
-        ignoredRosterIdsRef.current.clear()
-        previousDemandRef.current = snapshot.demand
-        previousRosterRef.current = snapshot.roster
-        latestScheduleRef.current = {
-          demand: snapshot.demand,
-          roster: snapshot.roster,
-          standing: snapshot.standing,
-          offers: snapshot.offers,
-        }
-        savedSignatureRef.current = JSON.stringify({
-          demand: snapshot.demand,
-          roster: snapshot.roster.map(
-            ({ outcome: _outcome, actualEnd: _actualEnd, coversShiftId: _coversShiftId, ...row }) => row,
-          ),
-          standing: snapshot.standing,
-          offers: snapshot.offers,
-        })
-        setRows(nextDemand)
-        setPlan(nextRoster)
-        setArrangements(nextStanding)
-        setOfferLog([...otherOffers, ...snapshot.offers])
+        revisionRef.current = revision
+        baseRef.current = state
+        adopt(state)
         setScheduleReady(true)
       })
       .catch(cause => {
@@ -294,211 +318,194 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
     return () => {
       cancelled = true
     }
-    // Initial state is replaced by the vacancy-scoped saved snapshot once.
+    // Loaded once per vacancy (and on "Try again"); the helpers are stable in effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vacancy.id, loadRetry])
 
   useEffect(() => {
-    if (!scheduleReady) return
-    const currentDemand = rows.filter(row => row.vacancyId === vacancy.id)
-    const currentRoster = plan.filter(row => row.vacancyId === vacancy.id)
-    for (const row of previousDemandRef.current) {
-      if (storedId(row.id) && !currentDemand.some(current => current.id === row.id)) {
-        deletedDemandIdsRef.current.add(row.id)
+    latestRef.current = { rows, plan, arrangements, offerLog }
+  })
+
+  const saveChanges = async () => {
+    const base = baseRef.current
+    const latest = latestRef.current
+    if (!base || !latest) return
+    const current = ownState(latest.rows, latest.plan, latest.arrangements, latest.offerLog)
+    const diff = diffSchedule(base, current)
+    if (!diff) return
+
+    setScheduleSaveStatus('Saving schedule…')
+    setScheduleSaveError('')
+    setSaveUndone(false)
+    let response: Response
+    let result: unknown
+    try {
+      response = await fetch(`/api/vacancies/${encodeURIComponent(vacancy.id)}/schedule`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ revision: revisionRef.current, ...diff }),
+      })
+      result = await response.json().catch(() => null)
+    } catch {
+      /* Offline: the changes stay on the page and go with the next save. */
+      setScheduleSaveStatus('')
+      setScheduleSaveError('Could not reach the server.')
+      return
+    }
+
+    if (
+      response.ok &&
+      isRecord(result) &&
+      Number.isSafeInteger(result.revision) &&
+      isRecord(result.ids) &&
+      isRecord(result.ids.demand) &&
+      isRecord(result.ids.roster) &&
+      Array.isArray(result.cancelledShiftIds)
+    ) {
+      staleRetriesRef.current = 0
+      const demandIds = result.ids.demand
+      const rosterIds = result.ids.roster
+      const cancelledIds = new Set(result.cancelledShiftIds.filter((id): id is string => typeof id === 'string'))
+      const mapId = (ids: Record<string, unknown>, id: string) => (typeof ids[id] === 'string' ? (ids[id] as string) : id)
+      revisionRef.current = result.revision as number
+      /* Ids the server issued replace the page's temporary ones. */
+      setRows(cur =>
+        cur.map(row => (row.vacancyId === vacancy.id ? { ...row, id: mapId(demandIds, row.id) } : row)),
+      )
+      setPlan(cur =>
+        cur
+          .filter(row => !cancelledIds.has(row.id))
+          .map(row => (row.vacancyId === vacancy.id ? { ...row, id: mapId(rosterIds, row.id) } : row)),
+      )
+      baseRef.current = {
+        demand: current.demand.map(row => ({ ...row, id: mapId(demandIds, row.id) })),
+        roster: rosterRows(
+          current.roster
+            .filter(row => !cancelledIds.has(row.id))
+            .map(({ position: _position, ...row }) => ({
+              ...row,
+              id: mapId(rosterIds, row.id),
+              outcome: 'planned' as const,
+              actualEnd: null,
+              coversShiftId: null,
+            })),
+        ),
+        standing: current.standing,
+        offers: current.offers,
       }
+      setScheduleSaveStatus('Schedule saved')
+      return
     }
-    for (const row of previousRosterRef.current) {
-      if (
-        storedId(row.id) &&
-        !currentRoster.some(current => current.id === row.id) &&
-        !ignoredRosterIdsRef.current.has(row.id)
-      ) {
-        deletedRosterIdsRef.current.add(row.id)
+
+    const code = isRecord(result) && typeof result.code === 'string' ? result.code : null
+    const params = isRecord(result) && isRecord(result.params) ? result.params : null
+    const message =
+      code === 'double_booking' && params
+        ? t('{name} is already on {job}{time} on {date}.', {
+            name: String(params.name ?? ''),
+            job: String(params.job ?? ''),
+            time: String(params.time ?? ''),
+            date: typeof params.date === 'string' ? formatDate(params.date) : '',
+          })
+        : isRecord(result) && typeof result.error === 'string'
+          ? result.error
+          : 'Could not save the schedule.'
+    try {
+      const theirs = await fetchSchedule()
+      if (response.status === 409 && code === 'stale' && staleRetriesRef.current < 3) {
+        /* Somebody else saved (or the Warehouse sync ran): take their version
+           and replay this page's own changes on top of it. The merged state
+           differs from the new base by exactly those changes, so the next save
+           sends just them. */
+        staleRetriesRef.current += 1
+        const now = latestRef.current ?? latest
+        const merged = mergeSchedule(
+          base,
+          ownState(now.rows, now.plan, now.arrangements, now.offerLog),
+          theirs.state,
+        )
+        revisionRef.current = theirs.revision
+        baseRef.current = theirs.state
+        adopt(merged)
+        setScheduleSaveStatus('Updated with changes made elsewhere')
+        return
       }
+      /* Refused (a clash, a record that cannot move): show why and put the
+         page back to what the server holds, instead of retrying the same
+         refused change forever. */
+      staleRetriesRef.current = 0
+      revisionRef.current = theirs.revision
+      baseRef.current = theirs.state
+      adopt(theirs.state)
+      setScheduleSaveStatus('')
+      setScheduleSaveError(message)
+      setSaveUndone(true)
+    } catch (cause) {
+      setScheduleSaveStatus('')
+      setScheduleSaveError(cause instanceof Error ? cause.message : message)
     }
-    previousDemandRef.current = currentDemand
-    previousRosterRef.current = currentRoster
-    const currentStanding = arrangements.filter(row => row.vacancyId === vacancy.id)
-    const currentOffers = offerLog.filter(row => row.vacancyId === vacancy.id)
-    latestScheduleRef.current = {
-      demand: currentDemand,
-      roster: currentRoster,
-      standing: currentStanding,
-      offers: currentOffers,
-    }
-  }, [scheduleReady, vacancy.id, rows, plan, arrangements, offerLog])
+  }
 
   useEffect(() => {
     if (!scheduleReady) return
     const timer = window.setTimeout(() => {
       saveQueueRef.current = saveQueueRef.current
-        .then(async () => {
-          const current = latestScheduleRef.current
-          if (!current) return
-          const demand = current.demand.map(
-            ({ id, vacancyId, date, placeId, section, headcount, start, end, note }) => ({
-              id,
-              vacancyId,
-              date,
-              placeId,
-              section,
-              headcount,
-              start,
-              end,
-              note,
-            }),
-          )
-          const roster = current.roster.map(
-            ({
-              id,
-              vacancyId,
-              date,
-              placeId,
-              section,
-              workerId,
-              extra,
-              extraReason,
-              standingId,
-              start,
-              end,
-              note,
-            }) => ({
-              id,
-              vacancyId,
-              date,
-              placeId,
-              section,
-              workerId,
-              extra,
-              extraReason,
-              standingId,
-              start,
-              end,
-              note,
-            }),
-          )
-          const standing = current.standing
-          const offers = current.offers
-          const deleteDemandIds = [...deletedDemandIdsRef.current]
-          const deleteRosterIds = [...deletedRosterIdsRef.current]
-          const signature = JSON.stringify({ demand, roster, standing, offers })
-          if (signature === savedSignatureRef.current && !deleteDemandIds.length && !deleteRosterIds.length)
-            return
-
-          setScheduleSaveStatus('Saving schedule…')
-          setScheduleSaveError('')
-          try {
-            const response = await fetch(`/api/vacancies/${encodeURIComponent(vacancy.id)}/schedule`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                revision: revisionRef.current,
-                demand,
-                roster,
-                standing,
-                offers,
-                deleteDemandIds,
-                deleteRosterIds,
-              }),
-            })
-            const result: unknown = await response.json()
-            if (!response.ok) {
-              const message =
-                isRecord(result) && typeof result.error === 'string'
-                  ? result.error
-                  : 'Could not save the schedule.'
-              throw new Error(message)
-            }
-            if (
-              !isRecord(result) ||
-              !Number.isSafeInteger(result.revision) ||
-              !isRecord(result.ids) ||
-              !isRecord(result.ids.demand) ||
-              !isRecord(result.ids.roster) ||
-              !Array.isArray(result.cancelledShiftIds) ||
-              !result.cancelledShiftIds.every(id => typeof id === 'string')
-            ) {
-              throw new Error('The server returned an invalid schedule save response.')
-            }
-
-            const demandIds = result.ids.demand
-            const rosterIds = result.ids.roster
-            const cancelledIds = new Set(result.cancelledShiftIds)
-            revisionRef.current = result.revision as number
-            for (const id of result.cancelledShiftIds) ignoredRosterIdsRef.current.add(id)
-            setRows(cur =>
-              cur.map(row => ({
-                ...row,
-                id: typeof demandIds[row.id] === 'string' ? (demandIds[row.id] as string) : row.id,
-              })),
-            )
-            setPlan(cur =>
-              cur
-                .filter(row => !cancelledIds.has(row.id))
-                .map(row => ({
-                  ...row,
-                  id: typeof rosterIds[row.id] === 'string' ? (rosterIds[row.id] as string) : row.id,
-                })),
-            )
-            for (const id of deleteDemandIds) deletedDemandIdsRef.current.delete(id)
-            for (const id of deleteRosterIds) deletedRosterIdsRef.current.delete(id)
-            const mappedDemand = demand.map(row => ({
-              ...row,
-              id: typeof demandIds[row.id] === 'string' ? (demandIds[row.id] as string) : row.id,
-            }))
-            const mappedRoster = roster
-              .filter(row => !cancelledIds.has(row.id))
-              .map(row => ({
-                ...row,
-                id: typeof rosterIds[row.id] === 'string' ? (rosterIds[row.id] as string) : row.id,
-              }))
-            savedSignatureRef.current = JSON.stringify({
-              demand: mappedDemand,
-              roster: mappedRoster,
-              standing,
-              offers,
-            })
-            setScheduleSaveStatus('Schedule saved')
-          } catch (cause) {
-            setScheduleSaveStatus('')
-            setScheduleSaveError(cause instanceof Error ? cause.message : 'Could not save the schedule.')
-          }
-        })
+        .then(saveChanges)
         .catch(cause => {
           setScheduleSaveStatus('')
           setScheduleSaveError(cause instanceof Error ? cause.message : 'Could not save the schedule.')
         })
     }, 500)
     return () => window.clearTimeout(timer)
+    // saveChanges reads the latest state through refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scheduleReady, saveRetry, vacancy.id, rows, plan, arrangements, offerLog])
 
+  /* The day being looked at survives a reload, and follows to other tabs —
+     but only until midnight. Stored as "<day shown> <day saved>"; the next
+     morning the schedule opens on today, not on yesterday's place. */
+  const shownDay = (stored: string | null) => {
+    const [day, savedOn] = (stored ?? '').split(' ')
+    return isISODate(day) && savedOn === today ? day : null
+  }
   useEffect(() => {
     let savedDate: string | null = null
     try {
-      savedDate = window.localStorage.getItem(storageKey)
+      savedDate = shownDay(window.localStorage.getItem(storageKey))
     } catch (cause) {
       setDateStorageError(cause instanceof Error ? cause.message : 'Could not read the saved schedule date.')
     }
-    if (isISODate(savedDate)) setAnchor(savedDate)
+    if (savedDate) setAnchor(savedDate)
+    /* ?day=… (a short day clicked in the vacancy list) opens that day. */
+    const askedDay = new URLSearchParams(window.location.search).get('day')
+    if (isISODate(askedDay)) {
+      setAnchor(askedDay)
+      setView('day')
+      window.history.replaceState(window.history.state, '', window.location.pathname)
+      window.setTimeout(() => document.querySelector('.sched-header')?.scrollIntoView({ block: 'start' }), 300)
+    }
     setRestoredStorageKey(storageKey)
     const onStorage = (event: StorageEvent) => {
-      if (event.key === storageKey && isISODate(event.newValue)) setAnchor(event.newValue)
+      const day = event.key === storageKey ? shownDay(event.newValue) : null
+      if (day) setAnchor(day)
     }
     window.addEventListener('storage', onStorage)
     return () => window.removeEventListener('storage', onStorage)
+    // `today` only changes at midnight; the stored day is read once per vacancy.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storageKey])
 
   useEffect(() => {
     if (restoredStorageKey !== storageKey) return
     try {
-      window.localStorage.setItem(storageKey, anchor)
+      window.localStorage.setItem(storageKey, `${anchor} ${today}`)
       setDateStorageError('')
     } catch (cause) {
       setDateStorageError(
         cause instanceof Error ? cause.message : 'Could not save the schedule date in this browser.',
       )
     }
-  }, [anchor, restoredStorageKey, storageKey])
+  }, [anchor, restoredStorageKey, storageKey, today])
 
   const week = isoWeek(anchor)
   const days = useMemo(() => {
@@ -511,6 +518,8 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
     return Array.from({ length: daysInMonth(anchor) }, (_, i) => `${month}-${String(i + 1).padStart(2, '0')}`)
   }, [view, anchor, week.year, week.week])
 
+  const weekPhotos = useDayPhotos(vacancy.id, days[0], days[days.length - 1], view === 'week')
+
   /* Months are stepped as months. Adding thirty days drifts and eventually
      skips one — February guarantees it. */
   const step = (n: number) =>
@@ -519,6 +528,51 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
     )
 
   const mine = <T extends { vacancyId: string }>(xs: T[]) => xs.filter(x => x.vacancyId === vacancy.id)
+  const withinVacancy = (date: string) => date >= vacancy.startDate && (!vacancy.endDate || date <= vacancy.endDate)
+  /* Every shift is stored against a site, so "whole site" means the vacancy's
+     first place. A slot or arrangement left without one (the dialogs used to
+     default to that) produced shifts the server refused to save. */
+  const firstPlace = vacancy.places[0]?.id ?? null
+  const placeOf = (placeId: string | null) => placeId ?? firstPlace
+  const onLeave = (s: RosterEntry) => !!s.workerId && leaves.some(l => l.workerId === s.workerId && l.date === s.date)
+  /** Another shift of the same person that day which cannot be combined with
+   *  this one (the one-hour rule), on any job. */
+  const clashOf = (s: RosterEntry) =>
+    plan.find(
+      other =>
+        other.id !== s.id &&
+        !!s.workerId &&
+        other.workerId === s.workerId &&
+        other.date === s.date &&
+        other.outcome !== 'cancelled' &&
+        sameDayClash(other, s) === 'blocked',
+    )
+  /** Their other shifts that day that can be combined — worth knowing, not wrong. */
+  const alsoOf = (s: RosterEntry) =>
+    plan.filter(
+      other =>
+        other.id !== s.id &&
+        !!s.workerId &&
+        other.workerId === s.workerId &&
+        other.date === s.date &&
+        other.outcome !== 'cancelled' &&
+        sameDayClash(other, s) === 'possible',
+    )
+  const jobLabel = (other: RosterEntry) =>
+    [
+      `${vacancies.find(v => v.id === other.vacancyId)?.title ?? ''}${other.vacancyId === vacancy.id ? ` · ${t(slotTitle(vacancy, other))}` : ''}`,
+      timeRange(other.start, other.end, t),
+    ]
+      .filter(Boolean)
+      .join(' ')
+  /** Who is really there: not the extras, and not somebody who is on leave. */
+  const staffed = (row: Demand) => shiftsIn(row).filter(s => !s.extra && !onLeave(s)).length
+  /** The day as a whole: people needed (slots, or the fixed pattern) against
+   *  people on it. Short only from tomorrow on — today is too late to plan. */
+  const needOn = (date: string) => {
+    const need = dayNeed(vacancy, date, rows, plan, arrangements, leaves)
+    return { ...need, short: date > today && need.needed > 0 && need.staffed < need.needed }
+  }
   const slotsOn = (date: string) =>
     mine(rows)
       .filter(r => r.date === date)
@@ -533,14 +587,17 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
   /* Turning arrangements into shifts for the days on screen. Anything already
      there is left alone — generating must never overwrite a decision. */
   const fillFromArrangements = (only?: StandingAssignment[]) => {
-    const source = only ?? arrangements
+    const source = (only ?? arrangements).map(a => ({ ...a, placeId: placeOf(a.placeId) }))
     /* A standing arrangement IS the order for this kind of work: nobody at a
        two-person evening clean sits down to "order two people every Monday".
        So filling creates the slot as well as the shifts — otherwise the shifts
        exist but have nowhere to show, which is what happened here first. An
        existing slot is never resized: that number came from the client. */
     const neededSlots: Demand[] = []
-    for (const date of days) {
+    /* Only the vacancy's own dates: an arrangement starting "today" used to
+       put people on days before the job had even begun. */
+    const jobDays = days.filter(date => withinVacancy(date))
+    for (const date of jobDays) {
       const day = weekdayOf(date)
       const due = source.filter(
         a =>
@@ -552,13 +609,19 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
           neededSlots.some(r => r.date === date && sameSlot(r, a))
         if (exists) continue
         const sameShape = due.filter(x => sameSlot(x, a)).length
+        /* The order is the vacancy's pattern for that day — two people a day
+           stays two even when only one of them is standing — less what other
+           slots that day already ask for. Never fewer than the standing people. */
+        const otherSlots = [...mine(rows), ...neededSlots]
+          .filter(r => r.date === date)
+          .reduce((sum, r) => sum + r.headcount, 0)
         neededSlots.push({
-          id: `d-auto-${vacancy.id}-${date}-${a.placeId ?? 'main'}-${a.section ?? ''}`,
+          id: tempId('d-auto'),
           vacancyId: vacancy.id,
           date,
           placeId: a.placeId,
           section: a.section,
-          headcount: sameShape,
+          headcount: Math.max(sameShape, patternNeed(vacancy, date) - otherSlots),
           start: a.start ?? (vacancy.schedule.start.kind === 'fixed' ? vacancy.schedule.start.time : null),
           end: a.end ?? (vacancy.schedule.end.kind === 'fixed' ? vacancy.schedule.end.time : null),
           note: null,
@@ -569,7 +632,7 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
 
     setPlan(cur => {
       const made: RosterEntry[] = []
-      for (const date of days) {
+      for (const date of jobDays) {
         const day = weekdayOf(date)
         for (const a of source.filter(x => x.vacancyId === vacancy.id)) {
           if (!a.weekdays.includes(day)) continue
@@ -581,7 +644,7 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
           if (already) continue
           const slot = [...mine(rows), ...neededSlots].find(r => r.date === date && sameSlot(r, a))
           made.push({
-            id: `r-gen-${a.id}-${date}`,
+            id: tempId('r-gen'),
             vacancyId: vacancy.id,
             date,
             placeId: a.placeId,
@@ -607,8 +670,9 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
      One day, three days or a whole week is the same operation — only the range
      differs — and the arrangement itself is untouched, so the original person
      comes back automatically when the range ends. */
-  const replaceOver = (a: StandingAssignment, incoming: string, from: string, to: string, reason: string) =>
+  const replaceOver = (arrangement: StandingAssignment, incoming: string, from: string, to: string, reason: string) =>
     setPlan(cur => {
+      const a = { ...arrangement, placeId: placeOf(arrangement.placeId) }
       const cover = workers.find(w => w.id === incoming)
       const note = reason || `Covering ${workers.find(w => w.id === a.workerId)?.fullName ?? ''}`.trim()
       /* A day the cover cannot take is left with the original person rather
@@ -628,12 +692,13 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
       /* Days in the range that were never generated still need covering. */
       const made: RosterEntry[] = []
       for (let d = from; d <= to; d = addDays(d, 1)) {
+        if (!withinVacancy(d)) continue
         if (!a.weekdays.includes(weekdayOf(d))) continue
         if (!canTake(d)) continue
         if (touched.some(s => s.vacancyId === vacancy.id && s.date === d && s.workerId === incoming)) continue
         const slot = mine(rows).find(r => r.date === d && sameSlot(r, a))
         made.push({
-          id: `r-cov-${a.id}-${d}`,
+          id: tempId('r-cov'),
           vacancyId: vacancy.id,
           date: d,
           placeId: a.placeId,
@@ -664,7 +729,7 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
     setRows(cur => [
       ...cur,
       {
-        id: `d-${vacancy.id}-${date}-${Date.now()}`,
+        id: tempId('d'),
         vacancyId: vacancy.id,
         date,
         placeId,
@@ -686,14 +751,18 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
     setRows(cur => cur.filter(r => r.id !== id))
     setOpenSlot(null)
   }
-  const assign = (row: Demand, workerId: string, extra = false) =>
+  /** Puts one or more people on a slot in one step — the map picker sends
+   *  everybody ticked at once. */
+  const assign = (row: Demand, workerIds: string[], extra = false) => {
+    const placeId = placeOf(row.placeId)
+    if (placeId !== row.placeId) patchSlot(row.id, { placeId })
     setPlan(cur => [
       ...cur,
-      {
-        id: `r-${Date.now()}`,
+      ...workerIds.map(workerId => ({
+        id: tempId('r'),
         vacancyId: vacancy.id,
         date: row.date,
-        placeId: row.placeId,
+        placeId,
         section: row.section,
         workerId,
         extra,
@@ -701,12 +770,13 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
         standingId: null,
         start: row.start,
         end: row.end,
-        outcome: 'planned',
+        outcome: 'planned' as const,
         actualEnd: null,
         coversShiftId: null,
         note: null,
-      },
+      })),
     ])
+  }
   const unassign = (id: string) => setPlan(cur => cur.filter(s => s.id !== id))
   /* The number beside a name is its position, so the position has to be
      movable — the same up/down the old warehouse schedule had. Order is the
@@ -739,7 +809,7 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
         ? [
             ...rest,
             {
-              id: `o-${Date.now()}`,
+              id: tempId('o'),
               vacancyId: vacancy.id,
               workerId,
               date,
@@ -794,12 +864,16 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
               className="button button-secondary"
               onClick={() => {
                 fillFromArrangements()
-                setSchedule(true)
               }}
               title={t('Create shifts from these arrangements for the days shown')}
             >
               <Wand2 />
-              {t('Create shifts for these days')}
+              {t('Create shifts for {range}', {
+                range:
+                  days.length === 1
+                    ? formatDate(days[0])
+                    : `${formatDate(days[0])} – ${formatDate(days[days.length - 1])}`,
+              })}
             </button>
           </div>
         </div>
@@ -820,7 +894,7 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
                   {a.weekdays.map(d => weekdayLabel[d]).join(' ')}
                   {timing === 'none'
                     ? ''
-                    : ` · ${a.start ?? 'slot time'}${timing === 'window' && a.end ? `–${a.end}` : ''}`}
+                    : ` · ${a.start ?? t('slot time')}${timing === 'window' && a.end ? `–${a.end}` : ''}`}
                   {[placeName(vacancy, a.placeId), a.section].filter(Boolean).length
                     ? ` · ${[placeName(vacancy, a.placeId), a.section].filter(Boolean).join(' · ')}`
                     : ''}
@@ -834,9 +908,32 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
               </button>
               <button
                 className="button button-secondary button-small"
-                onClick={() =>
+                onClick={async () => {
+                  /* Ending the arrangement used to leave every shift it had
+                     already made, so the person stayed on the schedule. */
+                  const future = mine(plan).filter(
+                    s =>
+                      s.workerId === a.workerId &&
+                      s.date > today &&
+                      (s.standingId === a.id ||
+                        (a.weekdays.includes(weekdayOf(s.date)) &&
+                          sameSlot(s, { placeId: placeOf(a.placeId), section: a.section }))),
+                  )
+                  if (
+                    future.length &&
+                    !(await confirm(
+                      t('End {name}? Their {count} planned shifts after today are removed too.', {
+                        name: w?.fullName ?? '',
+                        count: future.length,
+                      }),
+                      { confirmLabel: 'End' },
+                    ))
+                  )
+                    return
+                  const removed = new Set(future.map(s => s.id))
+                  setPlan(cur => cur.filter(s => !removed.has(s.id)))
                   setArrangements(cur => cur.map(x => (x.id === a.id ? { ...x, to: today } : x)))
-                }
+                }}
               >
                 {t('End')}
               </button>
@@ -845,111 +942,145 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
         })}
       </div>
 
-      <p className="dialog-note" role={scheduleSaveError ? 'alert' : 'status'}>
+      <p className="dialog-note sched-save-note" role={scheduleSaveError ? 'alert' : 'status'}>
         {scheduleSaveError ? (
           <>
             {t('Schedule changes were not saved:')} {t(scheduleSaveError)}{' '}
-            <button className="text-button" onClick={() => setSaveRetry(value => value + 1)}>
-              {t('Retry save')}
-            </button>
+            {saveUndone ? (
+              t('That change was undone.')
+            ) : (
+              <button className="text-button" onClick={() => setSaveRetry(value => value + 1)}>
+                {t('Retry save')}
+              </button>
+            )}
           </>
         ) : (
           t(scheduleSaveStatus || 'Schedule saves automatically')
         )}
       </p>
 
-      <button
-        className={`sched-toggle ${schedule ? 'open' : ''}`}
-        onClick={() => setSchedule(x => !x)}
-        aria-expanded={schedule}
-      >
-        <ChevronRight />
-        <strong>{t('Schedule')}</strong>
-        <span>
-          {schedule
-            ? t('Hide the day-by-day plan')
-            : t('Day-by-day plan · {count} shifts placed', {
-                count: mine(plan).filter(x => x.workerId).length,
-              })}
-        </span>
-      </button>
-
-      {schedule && (
-        <>
-          <div className="sched-toolbar">
-            <div className="seg">
-              {(['day', 'week', 'month'] as View[]).map(v => (
-                <button key={v} className={view === v ? 'active' : ''} onClick={() => changeView(v)}>
-                  {v === 'day' ? t('Day') : v === 'week' ? t('Week') : t('Month')}
-                </button>
-              ))}
-            </div>
-            <div className="dispatch-datenav">
-              <button className="icon-button" onClick={() => step(-1)} aria-label={t('Back')}>
-                <ChevronLeft />
-              </button>
-              <span className="week-label">
-                {view === 'day'
-                  ? formatDate(anchor)
-                  : view === 'week'
-                    ? `Week ${week.week} · ${formatDate(days[0])} – ${formatDate(days[6])}`
-                    : new Date(`${anchor}T12:00:00Z`).toLocaleDateString(
-                        locale === 'nl' ? 'nl-NL' : 'en-GB',
-                        { month: 'long', year: 'numeric' },
-                      )}
-              </span>
-              <button className="icon-button" onClick={() => step(1)} aria-label={t('Forward')}>
-                <ChevronRight />
-              </button>
-            </div>
-            <button className="button button-secondary" onClick={() => setSharing(true)}>
-              <Share2 />
-              {t('Share view')}
+      {/* The plan is always open: it is what this tab is for. */}
+      <div className="sched-header">
+        <div className="sched-header-title">
+          <h2>{t('Schedule')}</h2>
+          <p>{t('View and manage the day-by-day plan')}</p>
+        </div>
+        <div className="seg sched-views">
+          {(['day', 'week', 'month'] as View[]).map(v => (
+            <button key={v} className={view === v ? 'active' : ''} onClick={() => changeView(v)}>
+              {v === 'day' ? t('Day') : v === 'week' ? t('Week') : t('Month')}
             </button>
-          </div>
+          ))}
+        </div>
+        <div className="dispatch-datenav sched-datenav">
+          <button className="icon-button" onClick={() => step(-1)} aria-label={t('Back')}>
+            <ChevronLeft />
+          </button>
+          <span className="week-label">
+            <CalendarDays />
+            {view === 'day'
+              ? formatDate(anchor)
+              : view === 'week'
+                ? `${t('Week {week}', { week: week.week })} · ${formatDate(days[0])} – ${formatDate(days[6])}`
+                : monthTitle(anchor, locale)}
+          </span>
+          <button className="icon-button" onClick={() => step(1)} aria-label={t('Forward')}>
+            <ChevronRight />
+          </button>
+        </div>
+        <button
+          className="button button-secondary sched-today"
+          onClick={() => setAnchor(today)}
+          disabled={view === 'month' ? anchor.slice(0, 7) === today.slice(0, 7) : days.includes(today)}
+        >
+          {t('Today')}
+        </button>
+        <button className="button button-primary sched-share" onClick={() => setSharing(true)}>
+          <Share2 />
+          {t('Share view')}
+        </button>
+      </div>
           {dateStorageError && (
             <p className="dialog-note schedule-storage-note" role="status">
               {t('The selected date may not persist in this browser:')} {dateStorageError}
             </p>
           )}
 
-          <div className={`sched-layout ${active ? 'with-picker' : ''}`}>
+          {view === 'month' ? (
+            <ScheduleMonth
+              vacancyId={vacancy.id}
+              anchor={anchor}
+              today={today}
+              workingDay={date => slotsOn(date).length > 0}
+              staffing={date => {
+                const need = needOn(date)
+                return need.needed > 0 ? { filled: need.staffed, ordered: need.needed, short: need.short } : null
+              }}
+              onOpenDay={date => {
+                setAnchor(date)
+                changeView('day')
+              }}
+              onAddSlot={date => setDraft({ date })}
+            />
+          ) : (
+          <div className={`sched-layout layout-${view}`}>
+            <input {...weekPhotos.inputProps} />
+            {weekPhotos.error && (
+              <p className="dialog-note" role="alert">
+                {t(weekPhotos.error)}
+              </p>
+            )}
+            {/* A week is seven compact columns in one row (a column on a phone);
+                a day is the wide editor with the full photo report. */}
             <div className={`sched-days view-${view}`}>
               {days.map(date => {
                 const slots = slotsOn(date)
-                /* In a month view the quiet days collapse to a single line so the
-               working days stay readable, while still being orderable. */
-                const quiet = view === 'month' && !slots.length
+                const compact = view === 'week'
+                const need = needOn(date)
                 return (
-                  <Panel
-                    key={date}
-                    className={`sched-day ${date === today ? 'today' : ''} ${quiet ? 'quiet' : ''}`}
-                  >
+                  <Panel key={date} className={`sched-day ${date === today ? 'today' : ''} ${need.short ? 'short' : ''}`}>
                     <div className="sched-day-head">
                       <div>
                         <strong>{weekdayLabel[weekdayOf(date)]}</strong>
                         <span>{formatDate(date)}</span>
+                        {need.short && (
+                          <em className="day-short" title={t('{staffed} of {needed} people', { staffed: need.staffed, needed: need.needed })}>
+                            {t('{count} short', { count: need.needed - need.staffed })}
+                          </em>
+                        )}
                       </div>
                       <div className="sched-day-actions">
-                        {vacancy.requiresAvailableList && (
-                          <button
-                            className="button button-secondary button-small"
-                            onClick={() => setAvailableListDate(date)}
-                          >
-                            <Users />
-                            {t('Available people')}
+                        {vacancy.requiresAvailableList &&
+                          (compact ? (
+                            <button
+                              className="icon-button"
+                              onClick={() => setAvailableListDate(date)}
+                              aria-label={t('Available people')}
+                              title={t('Available people')}
+                            >
+                              <Users />
+                            </button>
+                          ) : (
+                            <button
+                              className="button button-secondary button-small"
+                              onClick={() => setAvailableListDate(date)}
+                            >
+                              <Users />
+                              {t('Available people')}
+                            </button>
+                          ))}
+                        {!compact && (
+                          <button className="add-shift" onClick={() => setDraft({ date })}>
+                            <Plus />
+                            {t('Add slot')}
                           </button>
                         )}
-                        <button className="add-shift" onClick={() => setDraft({ date })}>
-                          <Plus />
-                          {t('Add slot')}
-                        </button>
                       </div>
                     </div>
-                    {!slots.length && !quiet && <p className="sched-empty">{t('Not a working day.')}</p>}
+                    {!slots.length && !compact && <p className="sched-empty">{t('Not a working day.')}</p>}
                     {slots.map(row => {
                       const shifts = shiftsIn(row)
-                      const counted = shifts.filter(s => !s.extra)
+                      const counted = staffed(row)
                       return (
                         <div key={row.id} className={`sched-slot ${openSlot === row.id ? 'open' : ''}`}>
                           <div className="sched-slot-head">
@@ -988,12 +1119,38 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
                               />
                               <small>{t('ordered')}</small>
                             </span>
-                            <Badge tone={counted.length < row.headcount ? 'urgent' : 'green'}>
-                              {counted.length}/{row.headcount}
-                            </Badge>
+                            <span
+                              title={
+                                counted > row.headcount
+                                  ? t('More people than ordered')
+                                  : counted < row.headcount
+                                    ? t('Fewer people than ordered')
+                                    : undefined
+                              }
+                            >
+                              <Badge
+                                tone={counted < row.headcount ? 'urgent' : counted > row.headcount ? 'orange' : 'green'}
+                              >
+                                {counted}/{row.headcount}
+                              </Badge>
+                            </span>
                             <button
                               className="planner-clear"
-                              onClick={() => dropSlot(row.id)}
+                              onClick={async () => {
+                                if (
+                                  shifts.length &&
+                                  !(await confirm(
+                                    t('Remove {slot} on {date}? The {count} people on it are taken off too.', {
+                                      slot: t(slotTitle(vacancy, row)),
+                                      date: formatDate(row.date),
+                                      count: shifts.length,
+                                    }),
+                                    { confirmLabel: 'Remove slot' },
+                                  ))
+                                )
+                                  return
+                                dropSlot(row.id)
+                              }}
                               aria-label={t('Remove slot')}
                             >
                               ×
@@ -1003,19 +1160,39 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
                           <div className="sched-names">
                             {shifts.map((s, index) => {
                               const w = workers.find(x => x.id === s.workerId)
+                              const away = onLeave(s)
+                              const clash = clashOf(s)
+                              const clashJob = clash ? jobLabel(clash) : ''
+                              const also = clash ? [] : alsoOf(s)
                               return (
                                 <span
                                   key={s.id}
-                                  className={`name-chip ${s.extra ? 'extra' : ''}`}
-                                  title={s.note ?? s.extraReason ?? undefined}
+                                  className={`name-chip ${s.extra ? 'extra' : ''} ${away ? 'on-leave' : ''} ${clash ? 'clash' : ''} ${also.length ? 'also' : ''}`}
+                                  title={
+                                    away
+                                      ? t('On leave this day — not counted, find a replacement')
+                                      : clash
+                                        ? t('Cannot do both: also on {job}', { job: clashJob })
+                                        : also.length
+                                          ? t('Also works that day: {jobs}', { jobs: also.map(jobLabel).join('; ') })
+                                          : (s.note ?? s.extraReason ?? undefined)
+                                  }
                                 >
                                   {/* Numbering restarts at 1 for every slot, exactly as on the
                                   old warehouse schedule: each place and section counts
                                   its own people. */}
                                   <b className="chip-no">{index + 1}.</b>
-                                  <Link href={`/people/${s.workerId}`}>{w?.fullName ?? '—'}</Link>
+                                  <Link href={`/people/${s.workerId}`} title={w?.fullName}>
+                                    {w?.fullName ?? '—'}
+                                  </Link>
                                   {s.extra && <em>{t('extra')}</em>}
                                   {s.note && !s.extra && <em>{t('cover')}</em>}
+                                  {away && <em className="chip-warning">{t('on leave')}</em>}
+                                  {clash && !away && <em className="chip-warning">{t('double-booked')}</em>}
+                                  {!clash && !away && also.length > 0 && (
+                                    <em className="chip-also">{t('also {job}', { job: jobLabel(also[0]) })}</em>
+                                  )}
+                                  <span className="chip-actions">
                                   <button
                                     onClick={() => move(row, s.id, -1)}
                                     disabled={index === 0}
@@ -1039,6 +1216,7 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
                                   <button onClick={() => unassign(s.id)} aria-label={t('Remove')}>
                                     ×
                                   </button>
+                                  </span>
                                 </span>
                               )
                             })}
@@ -1053,41 +1231,53 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
                         </div>
                       )
                     })}
-                    <WorkdayReport vacancyId={vacancy.id} date={date} />
+                    {compact ? (
+                      <div className="sched-day-foot">
+                        <button className="month-add" onClick={() => setDraft({ date })}>
+                          <Plus />
+                          {t('Add slot')}
+                        </button>
+                        {slots.length > 0 && (
+                          <DayReportCard
+                            date={date}
+                            photos={weekPhotos.counts[date] ?? 0}
+                            uploading={weekPhotos.uploading === date}
+                            busy={weekPhotos.uploading !== null}
+                            onOpen={() => {
+                              setAnchor(date)
+                              changeView('day')
+                            }}
+                            onPick={() => weekPhotos.pick(date)}
+                          />
+                        )}
+                      </div>
+                    ) : (
+                      <WorkdayReport vacancyId={vacancy.id} date={date} />
+                    )}
                   </Panel>
                 )
               })}
             </div>
 
-            {active && (
-              <Panel className="sched-picker">
-                <div className="panel-header">
-                  <div>
-                    <h2>{t('Who can work')}</h2>
-                    <p>
-                      {slotTitle(vacancy, active)} · {formatDate(active.date)}
-                    </p>
-                  </div>
-                  <button className="icon-button" onClick={() => setOpenSlot(null)} aria-label={t('Close')}>
-                    <X />
-                  </button>
-                </div>
-                <CandidateList
-                  vacancy={vacancy}
-                  row={active}
-                  plan={plan}
-                  offerFor={offerFor}
-                  visibility={candidateVisibility}
-                  setVisibility={setCandidateVisibility}
-                  onAssign={(id, extra) => assign(active, id, extra)}
-                  onOffer={(id, status) => setOffer(id, active.date, status)}
-                />
-              </Panel>
-            )}
           </div>
-        </>
+          )}
+
+      {active && (
+        <SlotPicker
+          vacancy={vacancy}
+          row={active}
+          plan={plan}
+          staffed={staffed(active)}
+          offerFor={offerFor}
+          visibility={candidateVisibility}
+          setVisibility={setCandidateVisibility}
+          onAssign={ids => assign(active, ids)}
+          onOffer={(ids, status) => ids.forEach(id => setOffer(id, active.date, status))}
+          onClose={() => setOpenSlot(null)}
+        />
       )}
 
+      {confirmElement}
       {draft && (
         <SlotDialog
           vacancy={vacancy}
@@ -1111,7 +1301,6 @@ export function VacancySchedule({ vacancy }: { vacancy: Vacancy }) {
              The shifts are still ordinary shifts, so any single day can be
              changed or handed to somebody else afterwards. */
             fillFromArrangements([a])
-            setSchedule(true)
             setAddingPerson(false)
           }}
         />
@@ -1180,12 +1369,24 @@ function useCandidates(
             coversShiftId: null,
             note: null,
           }
-          const busy = plan.some(s => s.workerId === w.id && s.date === date && shiftsOverlap(s, probe))
+          /* Their other shifts that day, each judged by the one-hour rule
+             (sameDayClash): "blocked" ones make the person unavailable,
+             "possible" ones are shown so the dispatcher knows where else they
+             are — they may leave early to make this one. */
+          const sameDay = plan
+            .filter(s => s.workerId === w.id && s.date === date && s.outcome !== 'cancelled')
+            .map(s => ({
+              job: `${vacancies.find(v => v.id === s.vacancyId)?.title ?? ''}${s.vacancyId === vacancy.id ? ` · ${slotTitle(vacancy, s)}` : ''}`,
+              start: s.start,
+              end: s.end,
+              blocked: sameDayClash(s, probe) === 'blocked',
+            }))
+          const busy = sameDay.some(s => s.blocked)
           const onLeave = leaves.some(l => l.workerId === w.id && l.date === date)
-          /* Already on THIS job today. Overlapping times catch most of it, but a
-         slot at another hour would slip through and the client's sheet would
-         show the same person twice. */
-          const duplicate = alreadyOnVacancy(plan, vacancy.id, date, w.id)
+          /* Already in this very slot: the same name twice on the client's sheet. */
+          const duplicate = plan.some(
+            s => s.workerId === w.id && s.date === date && s.vacancyId === vacancy.id && s.outcome !== 'cancelled' && sameSlot(s, slot),
+          )
           /* A course is a standing weekly commitment, not a day off. */
           const onCourse = isCourseDay(w, date)
           /* Some sites cannot be reached without a car at the hours we staff
@@ -1201,6 +1402,7 @@ function useCandidates(
             onCourse,
             requirements: assessWorkerRequirements(vacancy, w),
             elsewhere: assignmentOn(w.id, date, null, plan),
+            sameDay,
             travel: travelFor(travel, w.id, vacancy.id),
           }
         }),
@@ -1240,245 +1442,55 @@ function CarFilter({ on, onChange }: { on: boolean; onChange: (on: boolean) => v
   )
 }
 
-function CandidateList({
+/** The map picker for one slot. A component of its own so the candidate
+ *  hook runs only while the picker is open. */
+function SlotPicker({
   vacancy,
   row,
   plan,
+  staffed,
   offerFor,
   visibility,
   setVisibility,
   onAssign,
   onOffer,
+  onClose,
 }: {
   vacancy: Vacancy
   row: Demand
   plan: RosterEntry[]
+  staffed: number
+  offerFor: (workerId: string, date: string) => Offer | null
   visibility: CandidateVisibility[]
   setVisibility: (update: (current: CandidateVisibility[]) => CandidateVisibility[]) => void
-  offerFor: (workerId: string, date: string) => Offer | null
-  onAssign: (workerId: string, extra: boolean) => void
-  onOffer: (workerId: string, status: 'offered' | 'declined' | null) => void
+  onAssign: (workerIds: string[]) => void
+  onOffer: (workerIds: string[], status: 'offered' | 'declined' | null) => void
+  onClose: () => void
 }) {
   const { t } = useLanguage()
-  const { leaves, vacancies, workers } = useWorkforceData()
-  /* A site that can only be reached by car already blocks everyone else, so
-     the switch would be a no-op there and is not offered. */
-  const [carOnly, setCarOnly] = useState(false)
-  const [showEveryone, setShowEveryone] = useState(false)
-  const [pendingVisibility, setPendingVisibility] = useState<string[]>([])
-  const [visibilityError, setVisibilityError] = useState('')
-  const base = useCandidates(vacancy, row.date, row, plan)
-  const candidates = base
-    .map(c => ({ ...c, offer: offerFor(c.w.id, row.date) }))
-    /* Free and near the top, already-refused at the bottom so nobody is rung
-       twice with the same offer by accident. */
-    .sort(
-      (a, b) =>
-        Number(a.offer?.status === 'declined') - Number(b.offer?.status === 'declined') ||
-        Number(
-          a.busy || a.onLeave || a.noCar || a.duplicate || a.onCourse || a.requirements.blocked.length > 0,
-        ) -
-          Number(
-            b.busy || b.onLeave || b.noCar || b.duplicate || b.onCourse || b.requirements.blocked.length > 0,
-          ) ||
-        (a.travel?.km ?? 1e9) - (b.travel?.km ?? 1e9),
-    )
-  const carFiltered = carOnly ? candidates.filter(c => c.w.hasCar === true) : candidates
-  const isHidden = (workerId: string, date: string) => {
-    const daySetting = visibility.find(item => item.workerId === workerId && item.date === date)
-    if (daySetting) return daySetting.hidden
-    return visibility.find(item => item.workerId === workerId && item.date === null)?.hidden ?? false
-  }
-  const hiddenCount = carFiltered.filter(candidate => isHidden(candidate.w.id, row.date)).length
-  const shown = carFiltered.filter(candidate => showEveryone || !isHidden(candidate.w.id, row.date))
-  const changeVisibility = async (workerId: string, hidden: boolean, reset = false) => {
-    const key = `${workerId}:${row.date}`
-    setPendingVisibility(current => [...current, key])
-    setVisibilityError('')
-    try {
-      const response = await fetch(`/api/vacancies/${encodeURIComponent(vacancy.id)}/candidate-visibility`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(
-          reset
-            ? { workerId, date: null, reset: true }
-            : { workerId, date: hidden ? null : row.date, hidden },
-        ),
-      })
-      const result: unknown = await response.json()
-      if (!response.ok) {
-        const message =
-          typeof result === 'object' &&
-          result !== null &&
-          'error' in result &&
-          typeof result.error === 'string'
-            ? result.error
-            : 'Could not update this person’s visibility.'
-        setVisibilityError(message)
-        return
-      }
-      setVisibility(current =>
-        reset
-          ? [
-              ...current.filter(item => item.workerId !== workerId),
-              { vacancyId: vacancy.id, workerId, date: null, hidden: false },
-            ]
-          : [
-              ...current.filter(
-                item => !(item.workerId === workerId && item.date === (hidden ? null : row.date)),
-              ),
-              { vacancyId: vacancy.id, workerId, date: hidden ? null : row.date, hidden },
-            ],
-      )
-    } catch (cause) {
-      setVisibilityError(
-        cause instanceof Error ? cause.message : 'Could not update this person’s visibility.',
-      )
-    } finally {
-      setPendingVisibility(current => current.filter(item => item !== key))
-    }
-  }
-
-  if (!candidates.length)
-    return (
-      <StateBlock
-        title="Nobody holds this contract"
-        description="No active worker has access to this client."
-      />
-    )
+  const candidates = useCandidates(vacancy, row.date, row, plan)
   return (
-    <div className="candidate-list">
-      {!vacancy.carOnly && <CarFilter on={carOnly} onChange={setCarOnly} />}
-      <div className="candidate-visibility-toolbar">
-        <button
-          className="button button-secondary button-small"
-          onClick={() => setShowEveryone(value => !value)}
-        >
-          {showEveryone ? (
-            <>
-              <EyeOff />
-              {t('Show available only')}
-            </>
-          ) : (
-            <>
-              <Eye />
-              {hiddenCount ? t('Show everyone · {count} hidden', { count: hiddenCount }) : t('Show everyone')}
-            </>
-          )}
-        </button>
-      </div>
-      {visibilityError && (
-        <p className="dialog-note" role="alert">
-          {visibilityError}
-        </p>
-      )}
-      {!shown.length && (
-        <StateBlock
-          title="Nobody here has a car"
-          description="Switch the filter off to see everyone who holds this contract."
-        />
-      )}
-      {shown.map(
-        ({ w, busy, onLeave, noCar, duplicate, onCourse, requirements, elsewhere, travel, offer }) => {
-          const blocked = busy || onLeave || noCar || duplicate || onCourse || requirements.blocked.length > 0
-          const hidden = isHidden(w.id, row.date)
-          const pending = pendingVisibility.includes(`${w.id}:${row.date}`)
-          return (
-            <div
-              key={w.id}
-              className={`candidate-row ${offer?.status === 'declined' ? 'declined' : ''} ${hidden ? 'candidate-hidden' : ''}`}
-            >
-              <span>
-                <strong>{w.fullName}</strong>
-                <small>
-                  {travel ? `${travel.km} km · ${travel.minutes} min` : t('no travel on record')}
-                  {duplicate
-                    ? t(' · already on this job today')
-                    : noCar
-                      ? t(' · no car — this site needs one')
-                      : onCourse
-                        ? t(' · at a course this weekday')
-                        : onLeave
-                          ? t(' · on leave')
-                          : busy
-                            ? ` · already on ${vacancies.find(v => v.id === elsewhere?.vacancyId)?.title ?? 'another job'}`
-                            : t(' · free')}
-                  {!vacancy.carOnly &&
-                    (w.hasCar === true
-                      ? t(' · car')
-                      : w.hasCar === false
-                        ? t(' · no car')
-                        : t(' · car status unverified'))}
-                  {hidden && t(' · hidden from selection')}
-                  {requirements.blocked.map(reason => ` · ${reason}`)}
-                  {requirements.warnings.map(reason => ` · ${reason}`)}
-                  {offer &&
-                    ` · ${offer.status === 'declined' ? 'declined' : 'offered'}${offer.note ? ` (${offer.note})` : ''}`}
-                </small>
-              </span>
-              <div className="candidate-actions">
-                {hidden ? (
-                  <>
-                    <button
-                      className="button button-secondary button-small"
-                      disabled={pending}
-                      onClick={() => changeVisibility(w.id, false)}
-                    >
-                      {t('Show this day')}
-                    </button>
-                    <button
-                      className="button button-secondary button-small"
-                      disabled={pending}
-                      onClick={() => changeVisibility(w.id, false, true)}
-                    >
-                      {t('Remove from hidden')}
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    className="button button-secondary button-small"
-                    disabled={pending}
-                    onClick={() => changeVisibility(w.id, true)}
-                  >
-                    {t('Hide')}
-                  </button>
-                )}
-                {offer?.status === 'declined' ? (
-                  <button
-                    className="button button-secondary button-small"
-                    onClick={() => onOffer(w.id, null)}
-                  >
-                    {t('Clear')}
-                  </button>
-                ) : (
-                  <button
-                    className="button button-secondary button-small"
-                    onClick={() => onOffer(w.id, 'declined')}
-                  >
-                    {t('Declined')}
-                  </button>
-                )}
-                <button
-                  className="button button-secondary button-small"
-                  disabled={blocked}
-                  onClick={() => onAssign(w.id, false)}
-                >
-                  {t('Assign')}
-                </button>
-                <button
-                  className="button button-secondary button-small"
-                  disabled={blocked}
-                  onClick={() => onAssign(w.id, true)}
-                  title={t('On site beyond the client order — worked, not billed')}
-                >
-                  {t('+ extra')}
-                </button>
-              </div>
-            </div>
-          )
-        },
-      )}
-    </div>
+    <PeoplePicker
+      vacancy={vacancy}
+      title={t('Who can work')}
+      subtitle={[
+        t(slotTitle(vacancy, row)),
+        `${weekdayLabel[weekdayOf(row.date)]} ${formatDate(row.date)}`,
+        slotTimeLabel(vacancy, row),
+      ]
+        .filter(Boolean)
+        .join(' · ')}
+      date={row.date}
+      ordered={row.headcount}
+      staffed={staffed}
+      candidates={candidates}
+      visibility={visibility}
+      setVisibility={setVisibility}
+      offerFor={offerFor}
+      onAssign={onAssign}
+      onOffer={onOffer}
+      onClose={onClose}
+    />
   )
 }
 
@@ -1702,18 +1714,18 @@ function ReplaceDialog({
         <div className="dialog-row">
           <label>
             {t('From')}
-            <input
-              type="date"
+            <DateField
               value={from}
-              onChange={e => {
-                setFrom(e.target.value)
-                if (e.target.value > to) setTo(e.target.value)
+              label={t('From')}
+              onChange={value => {
+                setFrom(value)
+                if (value > to) setTo(value)
               }}
             />
           </label>
           <label>
             {t('Until')}
-            <input type="date" value={to} min={from} onChange={e => setTo(e.target.value)} />
+            <DateField value={to} min={from} label={t('Until')} onChange={setTo} />
           </label>
           <label>
             {t('Reason (optional)')}
@@ -1784,7 +1796,7 @@ function ReplaceDialog({
                       .map(reason => ` · ${reason}`)
                       .join('')}
                     <br />
-                    {availabilityLabel(span)}
+                    {availabilityLabel(span, t)}
                   </small>
                 </span>
                 <Badge
@@ -1853,7 +1865,7 @@ function PersonDialog({
   const [weekdays, setWeekdays] = useState<Weekday[]>(
     vacancy.schedule.weekdays.length ? vacancy.schedule.weekdays : ['mon', 'tue', 'wed', 'thu', 'fri'],
   )
-  const [placeId, setPlaceId] = useState<string | null>(null)
+  const [placeId, setPlaceId] = useState<string | null>(vacancy.places[0]?.id ?? null)
   const [section, setSection] = useState('')
   const [carOnly, setCarOnly] = useState(false)
   const eligible = workers.filter(w => w.status === 'active' && w.companyAccess.includes(vacancy.companyId))
@@ -1951,7 +1963,7 @@ function PersonDialog({
                   {noCar ? t(' · no car — this site needs one') : ''}
                   {[...requirements.blocked, ...requirements.warnings].map(reason => ` · ${reason}`).join('')}
                   <br />
-                  {availabilityLabel(span)}
+                  {availabilityLabel(span, t)}
                 </small>
               </span>
               <Badge
@@ -1988,7 +2000,6 @@ function PersonDialog({
           <label>
             {t('Place')}
             <select value={placeId ?? ''} onChange={e => setPlaceId(e.target.value || null)}>
-              <option value="">{t('Whole site')}</option>
               {vacancy.places.map(p => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -2015,7 +2026,7 @@ function PersonDialog({
             disabled={!workerId || !weekdays.length}
             onClick={() =>
               onSave({
-                id: `sa-${Date.now()}`,
+                id: tempId('sa'),
                 vacancyId: vacancy.id,
                 workerId,
                 placeId,
@@ -2023,7 +2034,7 @@ function PersonDialog({
                 weekdays,
                 start: null,
                 end: null,
-                from: today,
+                from: vacancy.startDate > today ? vacancy.startDate : today,
                 to: null,
                 note: null,
               })
@@ -2085,7 +2096,6 @@ function SlotDialog({
           <label>
             {t('Place')}
             <select value={placeId ?? ''} onChange={e => setPlaceId(e.target.value || null)}>
-              <option value="">{t('Whole site — no place')}</option>
               {vacancy.places.map(p => (
                 <option key={p.id} value={p.id}>
                   {p.name}

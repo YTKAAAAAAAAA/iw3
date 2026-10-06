@@ -302,7 +302,7 @@ export function VacancyView({ id }: { id: string }) {
             </div>
           </div>
           <ul className="schedule-lines">
-            {describeSchedule(v).map(line => (
+            {describeSchedule(v, t).map(line => (
               <li key={line}>{line}</li>
             ))}
           </ul>

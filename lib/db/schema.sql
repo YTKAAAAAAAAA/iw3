@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS shift (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_shift_row
   ON shift (worker_id, date, site_slug, hours, is_extra, COALESCE(section, ''));
 CREATE INDEX IF NOT EXISTS idx_shift_date ON shift (date);
-CREATE INDEX IF NOT EXISTS idx_shift_worker ON shift (worker_id);
+-- The per-person index is shift_worker_date_idx (migration 028). This file runs
+-- on every start, so an index dropped by a migration must not be created here.
 CREATE INDEX IF NOT EXISTS idx_shift_site ON shift (site_slug);
 
 CREATE TABLE IF NOT EXISTS absence (

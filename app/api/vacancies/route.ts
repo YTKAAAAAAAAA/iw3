@@ -130,13 +130,18 @@ export async function POST(request: Request) {
           body.trackHoursManually && typeof projectCode === 'string' ? projectCode.trim() || null : null,
         ])
         const vacancy = inserted.rows[0]
+        // Without this row the new vacancy's schedule could not be saved at all.
+        await db.query(
+          'INSERT INTO vacancy_schedule_state (vacancy_id) VALUES ($1) ON CONFLICT (vacancy_id) DO NOTHING',
+          [vacancy.id],
+        )
         const placeNames = places.length ? places.map(place => (place as { name: string }).name.trim()) : [title]
         for (const [index, name] of placeNames.entries()) {
           const siteSlug = `${slug}-${index + 1}`
           await db.query(`
-            INSERT INTO site (slug, name, company, address, company_id)
-            VALUES ($1, $2, $3, $4, $5)
-          `, [siteSlug, name, company.rows[0].name, addressLabel, companyId])
+            INSERT INTO site (slug, name, address, company_id)
+            VALUES ($1, $2, $3, $4)
+          `, [siteSlug, name, addressLabel, companyId])
           await db.query('INSERT INTO vacancy_site (vacancy_id, site_slug) VALUES ($1, $2)', [vacancy.id, siteSlug])
         }
         for (const requirement of requirements as Array<{ kind: RequirementKind; label: string; required: boolean }>) {

@@ -24,10 +24,11 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   }
 
   const update = body as Record<string, unknown>
-  if (Object.keys(update).some(key => !['notes', 'hasCar', 'hasVog', 'courseDays'].includes(key))
+  if (Object.keys(update).some(key => !['notes', 'hasCar', 'hasBike', 'hasVog', 'courseDays'].includes(key))
     || Object.keys(update).length === 0
     || ('notes' in update && (typeof update.notes !== 'string' || update.notes.length > 5000))
     || ('hasCar' in update && update.hasCar !== null && typeof update.hasCar !== 'boolean')
+    || ('hasBike' in update && update.hasBike !== null && typeof update.hasBike !== 'boolean')
     || ('hasVog' in update && update.hasVog !== null && typeof update.hasVog !== 'boolean')
     || ('courseDays' in update && (!Array.isArray(update.courseDays)
       || update.courseDays.length > WEEKDAYS.length
@@ -54,6 +55,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       }
       for (const [field, kind, label] of [
         ['hasCar', 'transport', 'Own car'],
+        ['hasBike', 'transport', 'Bike'],
         ['hasVog', 'document', 'VOG on file'],
       ] as const) {
         if (!(field in update)) continue

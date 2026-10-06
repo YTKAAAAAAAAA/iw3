@@ -140,7 +140,7 @@ export function VacancyForm() {
         <PageHeading
           eyebrow="Assignments"
           title="Create vacancy"
-          description="Add a client order without storing computed status."
+          description="Where the client needs people, from when, and how many."
         />
         <Panel className="form-panel">
           <VacancyFields draft={draft} set={set} />

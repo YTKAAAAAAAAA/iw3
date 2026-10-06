@@ -1,6 +1,7 @@
 'use client'
 
 import { useExit } from '@/components/app-shell'
+import { useConfirm } from '@/components/confirm-dialog'
 import { useWorkforceData } from '@/components/workforce-data-context'
 import { useLanguage } from '@/lib/i18n'
 import { X } from 'lucide-react'
@@ -16,14 +17,15 @@ export function DismissWorkerDialog({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const { closing, close: dismiss } = useExit(onClose)
+  const { confirm, confirmElement } = useConfirm()
 
   const submit = async () => {
     const worker = active.find(candidate => candidate.id === workerId)
     if (
       !worker ||
-      !window.confirm(
-        t('Dismiss {name}? Their shifts and history will be preserved.', { name: worker.fullName }),
-      )
+      !(await confirm(t('Dismiss {name}? Their shifts and history will be preserved.', { name: worker.fullName }), {
+        confirmLabel: 'Dismiss',
+      }))
     )
       return
     setSaving(true)
@@ -42,6 +44,7 @@ export function DismissWorkerDialog({ onClose }: { onClose: () => void }) {
   }
 
   return (
+    <>
     <div className={`dialog-backdrop ${closing ? 'closing' : ''}`} onClick={dismiss}>
       <section
         className="dialog"
@@ -93,5 +96,7 @@ export function DismissWorkerDialog({ onClose }: { onClose: () => void }) {
         </div>
       </section>
     </div>
+    {confirmElement}
+    </>
   )
 }

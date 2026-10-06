@@ -1,5 +1,6 @@
 'use client'
 
+import { DateField } from '@/components/date-field'
 import { useLanguage } from '@/lib/i18n'
 import { AppShell, Badge, PageHeading, Panel, StateBlock } from '@/components/app-shell'
 import { ReportDialog } from '@/components/hours/report-dialog'
@@ -130,7 +131,7 @@ export function HoursView() {
           <div className="table-toolbar">
             <label>
               {t('Date')}
-              <input type="date" value={date} onChange={e => setDate(e.target.value)} />
+              <DateField value={date} label={t('Date')} onChange={setDate} />
             </label>
             <label>
               {t('Vacancy')}

@@ -1,95 +1,92 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { sortByUrgency, urgencyNote, vacancyStatus, vacancyUrgency } from './derive.ts'
-import type { Demand, RosterEntry, StandingAssignment, Vacancy } from './types.ts'
+import { dayNeed, sameDayClash, timeRange, vacancyAttention, vacancyStatus } from './derive.ts'
+import type { Demand, Leave, RosterEntry, StandingAssignment, Vacancy } from './types.ts'
 
-const TODAY = '2024-06-18'
+const TODAY = '2024-06-18' // a Tuesday
 
-const vacancy = (id: string, startDate: string, endDate: string | null = null): Vacancy => ({
+const vacancy = (id: string, startDate: string, endDate: string | null = null, count = 1): Vacancy => ({
   id, title: id, companyId: 'c', address: '', lat: null, lon: null, description: '',
   startDate, endDate, trackHoursManually: false, places: [], carOnly: false,
   defaultHours: null, projectCode: null,
-  schedule: { weekdays: [], start: { kind: 'fixed', time: '08:00' }, end: { kind: 'fixed', time: '16:00' },
-    headcount: { kind: 'fixed', count: 1 }, horizon: 'week' },
+  schedule: { weekdays: ['mon', 'tue', 'wed', 'thu', 'fri'], start: { kind: 'fixed', time: '08:00' },
+    end: { kind: 'fixed', time: '16:00' }, headcount: { kind: 'fixed', count }, horizon: 'week' },
 })
-const shift = (vacancyId: string, date: string, workerId: string | null): RosterEntry => ({
-  id: `r-${vacancyId}-${date}`, vacancyId, date, placeId: null, section: null, workerId,
-  extra: false, extraReason: null, standingId: null, start: null, end: null,
-  outcome: 'planned', actualEnd: null, coversShiftId: null, note: null,
+const shift = (vacancyId: string, date: string, workerId: string | null, over: Partial<RosterEntry> = {}): RosterEntry => ({
+  id: `r-${vacancyId}-${date}-${workerId}`, vacancyId, date, placeId: 'p', section: null, workerId,
+  extra: false, extraReason: null, standingId: null, start: '08:00', end: '16:00',
+  outcome: 'planned', actualEnd: null, coversShiftId: null, note: null, ...over,
 })
-const standing = (vacancyId: string, to: string | null): StandingAssignment => ({
-  id: `sa-${vacancyId}`, vacancyId, workerId: 'w-1', placeId: null, section: null,
-  weekdays: ['mon'], start: null, end: null, from: '2024-01-01', to, note: null,
+const standing = (vacancyId: string, workerId: string, to: string | null = null): StandingAssignment => ({
+  id: `sa-${vacancyId}-${workerId}`, vacancyId, workerId, placeId: 'p', section: null,
+  weekdays: ['mon', 'tue', 'wed', 'thu', 'fri'], start: null, end: null, from: '2024-01-01', to, note: null,
 })
-const demand = (vacancyId: string, date = TODAY, headcount = 1): Demand => ({
-  id: `d-${vacancyId}-${date}`, vacancyId, date, placeId: null, section: null,
+const slot = (vacancyId: string, date: string, headcount: number): Demand => ({
+  id: `d-${vacancyId}-${date}`, vacancyId, date, placeId: 'p', section: null,
   headcount, start: null, end: null, note: null,
 })
+const leave = (workerId: string, date: string): Leave => ({ id: `l-${workerId}-${date}`, workerId, date, reason: 'Day off', paidLeave: false })
 
-test('started and empty is late; starting within three days is soon', () => {
-  assert.equal(vacancyUrgency(vacancy('a', '2024-06-10'), [], [], TODAY, [demand('a')]), 'late')
-  assert.equal(vacancyUrgency(vacancy('a', TODAY), [], [], TODAY, [demand('a')]), 'soon')
-  assert.equal(vacancyUrgency(vacancy('a', '2024-06-21'), [], [], TODAY, [demand('a', '2024-06-21')]), 'soon')
+test('open until the first day, in progress from it — whoever is on it', () => {
+  assert.equal(vacancyStatus(vacancy('a', '2024-06-25'), [], [shift('a', '2024-06-25', 'w')], TODAY), 'open')
+  assert.equal(vacancyStatus(vacancy('a', TODAY), [], [], TODAY), 'in_progress')
+  assert.equal(vacancyStatus(vacancy('a', '2024-06-01', '2024-06-17'), [], [], TODAY), 'archived')
+  assert.equal(vacancyStatus({ ...vacancy('a', '2024-06-01'), archivedAt: '2024-06-10T10:00:00Z' }, [], [], TODAY), 'archived')
+  assert.equal(vacancyStatus(vacancy('a', '2024-06-10', TODAY), [], [], TODAY), 'in_progress')
 })
 
-test('the fourth day out is not urgent yet', () => {
-  assert.equal(vacancyUrgency(vacancy('a', '2024-06-22'), [], [], TODAY, [demand('a', '2024-06-22')]), 'none')
-})
-
-test('no dated demand or uncovered shift means the started vacancy is not unstaffed', () => {
-  assert.equal(vacancyUrgency(vacancy('a', '2024-06-17'), [], [], TODAY), 'none')
-})
-
-test('an uncovered shift or unmet dated headcount is unstaffed; filled demand is not', () => {
+test('in progress: a future working day without its people needs attention; today never does', () => {
   const v = vacancy('a', '2024-06-10')
-  assert.equal(vacancyUrgency(v, [], [shift('a', TODAY, 'w-1')], TODAY, [demand('a')]), 'none')
-  assert.equal(vacancyUrgency(v, [standing('a', null)], [], TODAY), 'none')
-  assert.equal(vacancyUrgency(v, [ { ...standing('a', null), weekdays: ['tue'] } ], [], TODAY, [demand('a')]), 'none')
-  assert.equal(vacancyUrgency(v, [], [shift('a', TODAY, null)], TODAY), 'late')
-  assert.equal(vacancyUrgency(v, [], [], TODAY, [demand('a', TODAY, 2)]), 'late')
-  assert.equal(vacancyUrgency(v, [], [shift('a', TODAY, 'w-1')], TODAY, [demand('a', TODAY, 2)]), 'late')
-  assert.equal(vacancyUrgency(v, [standing('a', '2024-06-01')], [], TODAY), 'none')
+  const filledFromTomorrow = ['2024-06-19', '2024-06-20', '2024-06-21', '2024-06-24', '2024-06-25', '2024-06-26',
+    '2024-06-27', '2024-06-28', '2024-07-01', '2024-07-02'].map(date => shift('a', date, 'w'))
+  // Today is empty, every working day ahead is covered: nothing to do.
+  assert.equal(vacancyAttention(v, [], filledFromTomorrow, [], [], TODAY).needsAttention, false)
+  // Thursday loses its person: Thursday, and only Thursday, is short.
+  const gap = filledFromTomorrow.filter(s => s.date !== '2024-06-20')
+  const attention = vacancyAttention(v, [], gap, [], [], TODAY)
+  assert.equal(attention.needsAttention, true)
+  assert.deepEqual(attention.shortDays.map(d => d.date), ['2024-06-20'])
 })
 
-test('an ended vacancy is history, not an emergency', () => {
-  assert.equal(vacancyUrgency(vacancy('a', '2024-01-01', '2024-06-01'), [], [], TODAY), 'none')
+test('open: only within three days of the start does a gap need attention', () => {
+  assert.equal(vacancyAttention(vacancy('a', '2024-06-24'), [], [], [], [], TODAY).needsAttention, false)
+  const soon = vacancyAttention(vacancy('a', '2024-06-20'), [], [], [], [], TODAY)
+  assert.equal(soon.status, 'open')
+  assert.equal(soon.daysToStart, 2)
+  assert.equal(soon.needsAttention, true)
+  assert.equal(soon.shortDays[0].date, '2024-06-20')
 })
 
-test('manual archiving preserves vacancy dates and can be reversed', () => {
-  const active = vacancy('a', TODAY, '2024-06-20')
-  assert.equal(vacancyStatus(active, [], [], TODAY), 'open')
-  assert.equal(vacancyStatus({ ...active, archivedAt: '2024-06-18T12:00:00Z' }, [], [], TODAY), 'archived')
-  assert.equal(vacancyUrgency({ ...active, archivedAt: '2024-06-18T12:00:00Z' }, [], [], TODAY, [demand('a')]), 'none')
-  assert.equal(vacancyStatus({ ...active, archivedAt: null }, [], [], TODAY), 'open')
+test('standing people count, people on leave and extras do not', () => {
+  const v = vacancy('a', '2024-06-10')
+  assert.equal(dayNeed(v, '2024-06-20', [], [], [standing('a', 'w')], []).staffed, 1)
+  assert.equal(dayNeed(v, '2024-06-20', [], [], [standing('a', 'w')], [leave('w', '2024-06-20')]).staffed, 0)
+  assert.equal(dayNeed(v, '2024-06-20', [], [shift('a', '2024-06-20', 'x', { extra: true })], [], []).staffed, 0)
+  // One person with both a shift and a standing arrangement is one person.
+  assert.equal(dayNeed(v, '2024-06-20', [], [shift('a', '2024-06-20', 'w')], [standing('a', 'w')], []).staffed, 1)
 })
 
-test('a vacancy with an end date stays active for that entire date', () => {
-  const active = vacancy('a', '2024-06-10', '2024-06-18')
-  assert.equal(vacancyStatus(active, [], [], TODAY), 'open')
-  assert.equal(vacancyStatus(active, [], [], '2024-06-19'), 'archived')
+test('an ordered slot sets the need — also on a day outside the fixed pattern', () => {
+  const v = vacancy('a', '2024-06-10')
+  assert.equal(dayNeed(v, '2024-06-22', [], [], [], []).needed, 0) // Saturday, no slot
+  assert.equal(dayNeed(v, '2024-06-22', [slot('a', '2024-06-22', 3)], [], [], []).needed, 3)
+  assert.equal(dayNeed(v, '2024-06-20', [slot('a', '2024-06-20', 2)], [], [], []).needed, 2)
 })
 
-test('late first, then soon, and inside each group the nearest date', () => {
-  const list = [
-    vacancy('quiet', '2024-08-01'),
-    vacancy('soon-later', '2024-06-21'),
-    vacancy('late-old', '2024-05-01'),
-    vacancy('soon-today', TODAY),
-    vacancy('late-recent', '2024-06-17'),
-  ]
-  const demandRows = [
-    demand('soon-later', '2024-06-21'),
-    demand('late-old'),
-    demand('soon-today'),
-    demand('late-recent'),
-  ]
-  assert.deepEqual(sortByUrgency(list, [], [], TODAY, demandRows).map(v => v.id),
-    ['late-old', 'late-recent', 'soon-today', 'soon-later', 'quiet'])
+test('two shifts one day: blocked under an hour apart, otherwise possible', () => {
+  assert.equal(sameDayClash({ start: '08:00', end: '16:00' }, { start: '12:00', end: '18:00' }), 'blocked')
+  assert.equal(sameDayClash({ start: '08:00', end: '16:30' }, { start: '17:00', end: '20:00' }), 'blocked')
+  assert.equal(sameDayClash({ start: '08:00', end: '16:00' }, { start: '17:00', end: '20:00' }), 'possible')
+  assert.equal(sameDayClash({ start: '17:00', end: '20:00' }, { start: '08:00', end: '16:00' }), 'possible')
+  // The first job's end is unknown: they may leave early — offer, with a warning.
+  assert.equal(sameDayClash({ start: '08:00', end: null }, { start: '13:00', end: null }), 'possible')
+  assert.equal(sameDayClash({ start: '08:00', end: null }, { start: '08:30', end: null }), 'blocked')
+  assert.equal(sameDayClash({ start: null, end: null }, { start: '08:00', end: '16:00' }), 'possible')
 })
 
-test('the row says why it is coloured', () => {
-  assert.equal(urgencyNote(vacancy('a', TODAY), 'soon', TODAY), 'Starts today — nobody on it')
-  assert.equal(urgencyNote(vacancy('a', '2024-06-19'), 'soon', TODAY), 'Starts tomorrow — nobody on it')
-  assert.equal(urgencyNote(vacancy('a', '2024-06-17'), 'late', TODAY), 'Started yesterday — nobody on it')
-  assert.equal(urgencyNote(vacancy('a', '2024-06-10'), 'none', TODAY), null)
+test('time ranges say what is known', () => {
+  assert.equal(timeRange('08:00', '16:30'), '08:00–16:30')
+  assert.equal(timeRange('08:00', null), 'from 08:00')
+  assert.equal(timeRange(null, '16:30'), 'until 16:30')
+  assert.equal(timeRange(null, null), '')
 })

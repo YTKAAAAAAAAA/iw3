@@ -3,7 +3,7 @@
 import { AppShell, Badge, PageHeading, Panel } from '@/components/app-shell'
 import { PeopleTable } from '@/components/people/people-table'
 import { useWorkforceData } from '@/components/workforce-data-context'
-import { availableWorkers, dayStatus, upcomingAbsences, vacancyStatus } from '@/lib/derive'
+import { availableWorkers, dayStatus, upcomingAbsences, vacancyAttention } from '@/lib/derive'
 import { useLanguage } from '@/lib/i18n'
 import { useToday } from '@/lib/today'
 import { formatDate } from '@/lib/types'
@@ -15,14 +15,17 @@ export function Metric({
   value,
   caption,
   href,
+  alert = false,
 }: {
   label: string
   value: string | number
   caption: string
   href: string
+  /** Red: something here needs doing today. */
+  alert?: boolean
 }) {
   return (
-    <Link href={href} className="metric-card">
+    <Link href={href} className={`metric-card ${alert ? 'metric-alert' : ''}`}>
       <div className="metric-label">
         {label}
         <ArrowUpRight />
@@ -38,10 +41,13 @@ export function Metric({
 export function Overview() {
   const today = useToday()
   const { t, locale } = useLanguage()
-  const { workers, roster, leaves, vacancies, standing } = useWorkforceData()
+  const { workers, roster, leaves, vacancies, standing, demand } = useWorkforceData()
   const active = workers.filter(w => w.status === 'active')
   const free = availableWorkers(workers, today, roster, leaves, vacancies)
-  const open = vacancies.filter(v => vacancyStatus(v, standing, roster, today) === 'open')
+  const attention = vacancies.map(v => vacancyAttention(v, demand, roster, standing, leaves, today))
+  const open = attention.filter(a => a.status === 'open')
+  const running = attention.filter(a => a.status === 'in_progress')
+  const needPeople = attention.filter(a => a.needsAttention).length
   const onLeave = active.filter(w => dayStatus(w.id, today, roster, leaves, vacancies) === 'leave')
   const workerById = new Map(workers.map(w => [w.id, w]))
   const comingUp = upcomingAbsences(leaves, today)
@@ -67,13 +73,13 @@ export function Overview() {
           }
         />
         <section className="metrics-grid">
+          {/* The first thing to see in the morning: which jobs are missing people. */}
           <Metric
-            label={t('Open vacancies')}
-            value={open.length}
-            caption={t(vacancies.length === 1 ? '1 vacancy in total' : '{count} vacancies in total', {
-              count: vacancies.length,
-            })}
+            label={t('Vacancies needing people')}
+            value={needPeople}
+            caption={t('{open} open · {running} in progress', { open: open.length, running: running.length })}
             href="/vacancies"
+            alert={needPeople > 0}
           />
           <Metric
             label={t('People available')}

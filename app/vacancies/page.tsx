@@ -7,6 +7,6 @@ export const dynamic = 'force-dynamic'
 
 export default async function Page() {
   await requireSession()
-  const data = await getPageWorkforceData({ include: ['schedule'] })
+  const data = await getPageWorkforceData({ include: ['schedule', 'leaves'] })
   return <WorkforceDataProvider data={data}><VacanciesView /></WorkforceDataProvider>
 }

@@ -1,22 +1,11 @@
 import type { AssignmentInfo, DayState, Demand, ISODate, Leave, RosterEntry, StandingAssignment, Vacancy, Worker } from './types.ts'
 
-export function vacancyStatus(vacancy:Vacancy, standing:StandingAssignment[], roster:RosterEntry[], today:ISODate): 'open'|'in_progress'|'archived' {
+/** Open until its first day, in progress from that day on — whoever is or is
+ *  not on it yet. Whether it needs somebody is `vacancyAttention`'s question. */
+export function vacancyStatus(vacancy:Vacancy, _standing:StandingAssignment[], _roster:RosterEntry[], today:ISODate): 'open'|'in_progress'|'archived' {
   if (vacancy.archivedAt || vacancy.endDate && vacancy.endDate < today) return 'archived'
-  /* Staffed means somebody is actually on it: either a shift from today
-     onwards, or a standing arrangement that has not ended. */
-  const staffed = roster.some(r => r.vacancyId === vacancy.id && r.date >= today && !!r.workerId)
-    || standing.some(a => a.vacancyId === vacancy.id && (!a.to || a.to >= today))
-  return staffed ? 'in_progress' : 'open'
+  return vacancy.startDate > today ? 'open' : 'in_progress'
 }
-/* ------------------------------------------------------------------
-   How badly an open vacancy needs somebody.
-
-   'open' already means nobody is on it — no shift, no standing arrangement.
-   What that status does not say is whether it matters yet: a job starting in
-   three weeks with nobody on it is normal, the same job starting tomorrow is
-   a phone call, and one that started on Monday is a client already waiting.
-   ------------------------------------------------------------------ */
-export type Urgency = 'late' | 'soon' | 'none'
 
 /** Days from `today` to the vacancy's start — negative once it has begun. */
 export const daysUntil = (date: ISODate, today: ISODate) =>
@@ -26,74 +15,133 @@ export const daysUntil = (date: ISODate, today: ISODate) =>
  *  ring round the pool and short enough that nothing else has to be dropped. */
 export const URGENT_DAYS = 3
 
-export function vacancyUrgency(
+/* ------------------------------------------------------------------
+   Does a vacancy need somebody — and on which days.
+
+   A day needs people when the client ordered them for it (a slot), or, with
+   no slot that day, when it is one of the vacancy's fixed working days. It is
+   short when fewer distinct people are on it than needed: people with a shift
+   that day, plus standing people whose arrangement covers it — minus anybody
+   on leave, and not counting extras. Today and past days are never "short":
+   there is nothing left to arrange for them.
+   ------------------------------------------------------------------ */
+export type DayNeed = { date: ISODate; needed: number; staffed: number }
+
+/** How many days ahead an in-progress vacancy is watched for gaps. */
+export const ATTENTION_HORIZON_DAYS = 14
+
+/** People the vacancy's fixed pattern asks for on this date (0 off-pattern). */
+export const patternNeed = (vacancy: Vacancy, date: ISODate) => {
+  const s = vacancy.schedule
+  const day = weekdayOfDate(date)
+  if (!s.weekdays.includes(day)) return 0
+  return s.headcount.kind === 'fixed' ? s.headcount.count
+    : s.headcount.kind === 'byWeekday' ? s.headcount.counts[day] ?? 0
+    : s.headcount.typical
+}
+
+export function dayNeed(
   vacancy: Vacancy,
-  standing: StandingAssignment[],
-  roster: RosterEntry[],
-  today: ISODate,
-  demand: Demand[] = [],
-): Urgency {
-  if (vacancy.archivedAt || vacancy.endDate && vacancy.endDate < today
-    || !hasUnstaffedSlot(vacancy.id, standing, roster, demand, today)) return 'none'
-  const days = daysUntil(vacancy.startDate, today)
-  if (days < 0) return 'late'
-  return days <= URGENT_DAYS ? 'soon' : 'none'
-}
-
-function hasUnstaffedSlot(
-  vacancyId: string,
-  standing: StandingAssignment[],
-  roster: RosterEntry[],
+  date: ISODate,
   demand: Demand[],
-  today: ISODate,
-): boolean {
-  const activeShifts = roster.filter(shift => shift.vacancyId === vacancyId
-    && shift.date >= today && shift.outcome !== 'cancelled')
-  if (activeShifts.some(shift => shift.workerId === null)) return true
-  return demand.some(slot => {
-    if (slot.vacancyId !== vacancyId || slot.date < today || slot.headcount <= 0) return false
-    const assigned = activeShifts.filter(shift =>
-      shift.date === slot.date
-      && (slot.placeId === null || shift.placeId === slot.placeId)
-      && (slot.section === null || shift.section === slot.section)
-      && shift.workerId !== null,
-    ).length
-    const weekday = weekdayOfDate(slot.date)
-    const standingWorkers = standing.filter(assignment =>
-      assignment.vacancyId === vacancyId
-      && assignment.weekdays.includes(weekday)
-      && assignment.from <= slot.date
-      && (assignment.to === null || assignment.to >= slot.date)
-      && (slot.placeId === null || assignment.placeId === slot.placeId)
-      && (slot.section === null || assignment.section === slot.section),
-    ).length
-    return Math.max(assigned, standingWorkers) < slot.headcount
-  })
-}
-
-/** Open vacancies, worst first: already running and empty, then starting
- *  within days, then the rest — and inside each group the nearest date first,
- *  which for the late ones means the one that has been waiting longest. */
-export function sortByUrgency(
-  vacancies: Vacancy[],
-  standing: StandingAssignment[],
   roster: RosterEntry[],
-  today: ISODate,
-  demand: Demand[] = [],
-): Vacancy[] {
-  const rank: Record<Urgency, number> = { late: 0, soon: 1, none: 2 }
-  return [...vacancies].sort((a, b) =>
-    rank[vacancyUrgency(a, standing, roster, today, demand)] - rank[vacancyUrgency(b, standing, roster, today, demand)]
-    || a.startDate.localeCompare(b.startDate)
-    || a.title.localeCompare(b.title))
+  standing: StandingAssignment[],
+  leaves: Leave[],
+): DayNeed {
+  const slots = demand.filter(d => d.vacancyId === vacancy.id && d.date === date)
+  const inside = date >= vacancy.startDate && (!vacancy.endDate || date <= vacancy.endDate)
+  const needed = slots.length ? slots.reduce((sum, d) => sum + d.headcount, 0) : inside ? patternNeed(vacancy, date) : 0
+  const away = (workerId: string) => leaves.some(l => l.workerId === workerId && l.date === date)
+  const people = new Set<string>()
+  for (const r of roster) {
+    if (r.vacancyId === vacancy.id && r.date === date && r.workerId && !r.extra
+      && r.outcome !== 'cancelled' && !away(r.workerId)) people.add(r.workerId)
+  }
+  const weekday = weekdayOfDate(date)
+  for (const a of standing) {
+    if (a.vacancyId === vacancy.id && a.weekdays.includes(weekday) && a.from <= date
+      && (!a.to || a.to >= date) && !away(a.workerId)) people.add(a.workerId)
+  }
+  return { date, needed, staffed: people.size }
 }
 
-/** What the row should say about itself. Null when there is nothing to say. */
-export function urgencyNote(vacancy: Vacancy, urgency: Urgency, today: ISODate): string | null {
-  if (urgency === 'none') return null
-  const days = daysUntil(vacancy.startDate, today)
-  if (urgency === 'late') return days === -1 ? 'Started yesterday — nobody on it' : `Started ${-days} days ago — nobody on it`
-  return days === 0 ? 'Starts today — nobody on it' : days === 1 ? 'Starts tomorrow — nobody on it' : `Starts in ${days} days — nobody on it`
+/** Short days between `from` and `to` (inclusive), never before tomorrow. */
+export function understaffedDays(
+  vacancy: Vacancy,
+  demand: Demand[],
+  roster: RosterEntry[],
+  standing: StandingAssignment[],
+  leaves: Leave[],
+  today: ISODate,
+  from: ISODate,
+  to: ISODate,
+): DayNeed[] {
+  const first = [addDays(today, 1), from, vacancy.startDate].sort()[2]
+  const last = vacancy.endDate && vacancy.endDate < to ? vacancy.endDate : to
+  const short: DayNeed[] = []
+  for (let date = first; date <= last; date = addDays(date, 1)) {
+    const need = dayNeed(vacancy, date, demand, roster, standing, leaves)
+    if (need.needed > 0 && need.staffed < need.needed) short.push(need)
+  }
+  return short
+}
+
+export type Attention = {
+  status: 'open' | 'in_progress' | 'archived'
+  /** Whole days until the first day; negative once it has begun. */
+  daysToStart: number
+  shortDays: DayNeed[]
+  /** In progress with a short day ahead, or opening within three days with one. */
+  needsAttention: boolean
+}
+
+export function vacancyAttention(
+  vacancy: Vacancy,
+  demand: Demand[],
+  roster: RosterEntry[],
+  standing: StandingAssignment[],
+  leaves: Leave[],
+  today: ISODate,
+  horizon = ATTENTION_HORIZON_DAYS,
+): Attention {
+  const status = vacancyStatus(vacancy, standing, roster, today)
+  const daysToStart = daysUntil(vacancy.startDate, today)
+  if (status === 'archived') return { status, daysToStart, shortDays: [], needsAttention: false }
+  const watched = status === 'in_progress' || daysToStart < URGENT_DAYS
+  const shortDays = watched
+    ? understaffedDays(vacancy, demand, roster, standing, leaves, today, today, addDays(today, horizon))
+    : []
+  return { status, daysToStart, shortDays, needsAttention: shortDays.length > 0 }
+}
+
+/* ------------------------------------------------------------------
+   One person, two shifts on one day.
+
+   They cannot both be worked when they start within an hour of each other, or
+   when the first one's end is known and leaves less than an hour before the
+   second begins. Anything else is "possible": the person can be offered —
+   they may well leave the first job early to make the second.
+   ------------------------------------------------------------------ */
+export function sameDayClash(
+  a: { start: string | null; end: string | null },
+  b: { start: string | null; end: string | null },
+): 'blocked' | 'possible' {
+  const aStart = minutesOf(a.start), bStart = minutesOf(b.start)
+  if (aStart === null || bStart === null) return 'possible'
+  const first = aStart <= bStart ? a : b
+  const firstStart = Math.min(aStart, bStart), secondStart = Math.max(aStart, bStart)
+  if (secondStart - firstStart < 60) return 'blocked'
+  const firstEnd = minutesOf(first.end)
+  if (firstEnd !== null && secondStart - firstEnd < 60) return 'blocked'
+  return 'possible'
+}
+
+/** "08:00–16:30", "from 08:00", "until 16:30" or nothing, in the UI's words. */
+export function timeRange(start: string | null, end: string | null, t: Translate = plain): string {
+  if (start && end) return `${start}–${end}`
+  if (start) return t('from {time}', { time: start })
+  if (end) return t('until {time}', { time: end })
+  return ''
 }
 
 /* ------------------------------------------------------------------
@@ -156,17 +204,26 @@ export function availabilityOver(worker: Worker, days: ISODate[], vacancyId: str
 }
 
 /** The same thing in a sentence, because a list of dates is not an answer. */
-export function availabilityLabel(a: Availability): string {
-  if (!a.days.length) return 'No working days in this period'
-  if (a.fullyFree) return `Free all ${a.days.length} ${a.days.length === 1 ? 'day' : 'days'}`
-  if (!a.free.length) return 'Busy every day of this period'
+/** A sentence template and its values, the way the UI's `t()` takes them.
+ *  The default fills the English template in, so the builders below work
+ *  without the UI; the pages pass `t` and get Dutch. */
+export type Translate = (text: string, values?: Record<string, string | number>) => string
+const plain: Translate = (text, values = {}) =>
+  text.replace(/\{(\w+)\}/g, (match, key: string) => (key in values ? String(values[key]) : match))
+
+export function availabilityLabel(a: Availability, t: Translate = plain): string {
+  if (!a.days.length) return t('No working days in this period')
+  if (a.fullyFree) return t(a.days.length === 1 ? 'Free all {count} day' : 'Free all {count} days', { count: a.days.length })
+  if (!a.free.length) return t('Busy every day of this period')
   const parts: string[] = []
-  if (a.reasons.duplicate) parts.push(`${a.reasons.duplicate} already on this job`)
-  if (a.reasons.busy) parts.push(`${a.reasons.busy} on other work`)
-  if (a.reasons.leave) parts.push(`${a.reasons.leave} on leave`)
-  if (a.reasons.course) parts.push(`${a.reasons.course} at a course`)
-  const taken = `${a.taken.length} of ${a.days.length} taken (${parts.join(', ')})`
-  return a.freeFrom ? `Free from ${formatDate(a.freeFrom)} · ${taken}` : `Never free for a whole run · ${taken}`
+  if (a.reasons.duplicate) parts.push(t('{count} already on this job', { count: a.reasons.duplicate }))
+  if (a.reasons.busy) parts.push(t('{count} on other work', { count: a.reasons.busy }))
+  if (a.reasons.leave) parts.push(t('{count} on leave', { count: a.reasons.leave }))
+  if (a.reasons.course) parts.push(t('{count} at a course', { count: a.reasons.course }))
+  const taken = t('{taken} of {total} taken ({reasons})', { taken: a.taken.length, total: a.days.length, reasons: parts.join(', ') })
+  return a.freeFrom
+    ? t('Free from {date} · {taken}', { date: formatDate(a.freeFrom), taken })
+    : t('Never free for a whole run · {taken}', { taken })
 }
 
 export function assignmentOn(workerId:string, date:ISODate, _unused:unknown, roster:RosterEntry[], _vacancies?:unknown): AssignmentInfo|null {
@@ -385,37 +442,46 @@ export function generateDemand(vacancy: VacancyType, dates: ISODate[], existing:
 
 /** The pattern in plain words, for the vacancy page. Reading a union of rules
  *  off the screen should not require knowing the union. */
-export function describeSchedule(vacancy: VacancyType): string[] {
+export function describeSchedule(vacancy: VacancyType, t: Translate = plain): string[] {
   const s = vacancy.schedule
   const lines: string[] = []
+  const days = (times: Partial<Record<Weekday, string>>) =>
+    WEEKDAYS.filter(d => times[d]).map(d => `${weekdayLabel[d]} ${times[d]}`).join(', ')
 
   lines.push(s.weekdays.length
-    ? `Working days: ${s.weekdays.map(d => weekdayLabel[d]).join(', ')}${s.weekdays.length < 7 ? ' (exceptions are added per day)' : ''}`
-    : 'Working days: no fixed pattern — every day comes from the client’s own schedule')
+    ? t(s.weekdays.length < 7 ? 'Working days: {days} (exceptions are added per day)' : 'Working days: {days}', {
+        days: s.weekdays.map(d => weekdayLabel[d]).join(', '),
+      })
+    : t('Working days: no fixed pattern — every day comes from the client’s own schedule'))
 
   const timing = timingOf(s)
   if (timing === 'none') {
-    lines.push('Times: none — the day records who was there, not when')
+    lines.push(t('Times: none — the day records who was there, not when'))
   } else {
     lines.push(
-      s.start.kind === 'fixed' ? `Start: ${s.start.time}, every day`
-      : s.start.kind === 'byWeekday' ? `Start: ${WEEKDAYS.filter(d => s.start.kind === 'byWeekday' && s.start.times[d]).map(d => `${weekdayLabel[d]} ${(s.start as any).times[d]}`).join(', ')}`
-      : s.start.kind === 'perDate' ? `Start: set per day${s.start.options.length ? ` (usually ${s.start.options.join(', ')})` : ''}`
-      : 'Start: not recorded')
+      s.start.kind === 'fixed' ? t('Start: {time}, every day', { time: s.start.time })
+      : s.start.kind === 'byWeekday' ? t('Start: {times}', { times: days(s.start.times) })
+      : s.start.kind === 'perDate'
+        ? s.start.options.length
+          ? t('Start: set per day (usually {times})', { times: s.start.options.join(', ') })
+          : t('Start: set per day')
+      : t('Start: not recorded'))
 
     lines.push(
-      s.end.kind === 'fixed' ? `End: ${s.end.time} (overtime extends it)`
-      : s.end.kind === 'open' ? 'End: not recorded — people leave when the work is done, so the rest of that day is blocked for them'
-      : s.end.kind === 'byWeekday' ? `End: ${WEEKDAYS.filter(d => s.end.kind === 'byWeekday' && s.end.times[d]).map(d => `${weekdayLabel[d]} ${(s.end as any).times[d]}`).join(', ')}`
-      : 'End: set per day')
+      s.end.kind === 'fixed' ? t('End: {time} (overtime extends it)', { time: s.end.time })
+      : s.end.kind === 'open' ? t('End: not recorded — people leave when the work is done, so the rest of that day is blocked for them')
+      : s.end.kind === 'byWeekday' ? t('End: {times}', { times: days(s.end.times) })
+      : t('End: set per day'))
   }
 
   lines.push(
-    s.headcount.kind === 'fixed' ? `People: ${s.headcount.count} per slot`
-    : s.headcount.kind === 'byWeekday' ? `People: varies by weekday`
-    : `People: set per day (usually ${s.headcount.typical})`)
+    s.headcount.kind === 'fixed' ? t('People: {count} per slot', { count: s.headcount.count })
+    : s.headcount.kind === 'byWeekday' ? t('People: varies by weekday')
+    : t('People: set per day (usually {count})', { count: s.headcount.typical }))
 
-  lines.push(vacancy.places.length ? `Places: ${vacancy.places.map(p => p.name).join(' · ')} — sections inside them are typed per day` : 'Places: none — the site is ordered as a whole')
+  lines.push(vacancy.places.length
+    ? t('Places: {places} — sections inside them are typed per day', { places: vacancy.places.map(p => p.name).join(' · ') })
+    : t('Places: none — the site is ordered as a whole'))
   return lines
 }
 

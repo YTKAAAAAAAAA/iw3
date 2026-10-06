@@ -89,7 +89,7 @@ const STYLE_INDEX: Record<StyleName, number> = {
 
 const STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<numFmts count="2"><numFmt numFmtId="164" formatCode="DD-MM-YYYY"/><numFmt numFmtId="165" formatCode="#,##0.00"/></numFmts>
+<numFmts count="2"><numFmt numFmtId="164" formatCode="DD.MM.YYYY"/><numFmt numFmtId="165" formatCode="#,##0.00"/></numFmts>
 <fonts count="6">
 <font><sz val="10"/><name val="Arial"/></font>
 <font><b/><sz val="12"/><name val="Arial"/></font>

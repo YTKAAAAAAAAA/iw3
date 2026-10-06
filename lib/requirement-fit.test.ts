@@ -5,7 +5,7 @@ import type { Requirement, Worker } from './types.ts'
 
 const worker: Worker = {
   id: 'w-1', flexpediaId: null, initials: 'AB', firstName: 'A',
-  insertion: null, lastName: 'B', fullName: 'A B', city: null, hasCar: false, hasVog: true,
+  insertion: null, lastName: 'B', fullName: 'A B', city: null, hasCar: false, hasBike: null, hasVog: true,
   courseDays: [], status: 'active', dismissedAt: null, companyAccess: [],
 }
 

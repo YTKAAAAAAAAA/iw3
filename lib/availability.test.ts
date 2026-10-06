@@ -6,7 +6,7 @@ import type { Leave, RosterEntry, Worker } from './types.ts'
 const worker = (over: Partial<Worker> = {}): Worker => ({
   id: 'w-1', flexpediaId: null, initials: 'XX', firstName: 'Jan', insertion: null,
   lastName: 'Bakker', fullName: 'Jan Bakker', city: null,
-  hasCar: true, hasVog: true, courseDays: [], status: 'active', dismissedAt: null, companyAccess: [], ...over,
+  hasCar: true, hasBike: null, hasVog: true, courseDays: [], status: 'active', dismissedAt: null, companyAccess: [], ...over,
 })
 const shift = (vacancyId: string, date: string, workerId: string | null, outcome: RosterEntry['outcome'] = 'planned'): RosterEntry => ({
   id: `r-${vacancyId}-${date}`, vacancyId, date, placeId: null, section: null, workerId, extra: false,

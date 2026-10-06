@@ -1,12 +1,13 @@
 'use client'
 
+import { DateField } from '@/components/date-field'
 import { Badge, StateBlock } from '@/components/app-shell'
 import { useWorkforceData } from '@/components/workforce-data-context'
 import { currentAssignment, dayStatus } from '@/lib/derive'
 import { useLanguage } from '@/lib/i18n'
 import { useToday } from '@/lib/today'
 import { formatDate, type DayState } from '@/lib/types'
-import { ArrowUpRight, CalendarDays, ChevronLeft, ChevronRight, Search } from 'lucide-react'
+import { ArrowUpRight, ChevronLeft, ChevronRight, Search } from 'lucide-react'
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
 
@@ -85,12 +86,10 @@ export function PeopleTable({ compact = false }: { compact?: boolean }) {
             <option value="leave">{t('Leave')}</option>
           </select>
           <label className="date-filter">
-            <CalendarDays />
-            <input
-              type="date"
+            <DateField
               value={date}
-              onChange={e => filterChanged(setDate)(e.target.value || today)}
-              aria-label={t('Availability date')}
+              label={t('Availability date')}
+              onChange={value => filterChanged(setDate)(value || today)}
             />
           </label>
           <span className="result-count">

@@ -17,10 +17,10 @@ import {
   PanelLeft,
   Plus,
   Search,
-  Settings,
   Sun,
   Users,
   X,
+  Building2,
 } from 'lucide-react'
 import { formatDate, parseClock } from '@/lib/types'
 import type { ReactNode } from 'react'
@@ -35,7 +35,7 @@ const nav = [
   ['People', '/people', Users],
   ['Vacancies', '/vacancies', BriefcaseBusiness],
   ['Hours', '/hours', Clock3],
-  ['Companies', '/companies', Settings],
+  ['Companies', '/companies', Building2],
   ['Map', '/map', Map],
 ] as const
 export function Badge({ children, tone = 'neutral' }: { children: ReactNode; tone?: string }) {
@@ -260,6 +260,66 @@ export function useExit(done: () => void) {
   return { closing, close }
 }
 
+/* ------------------------------------------------------------------
+   Back by gesture in the Claude desktop app's browser.
+
+   Safari and Chrome turn a two-finger swipe on a Mac trackpad into "back"
+   on their own, and links here push real history, so there it already
+   works. The browser built into the Claude app does not — there the only
+   way back was the back link. So in that browser only (matched by its user
+   agent, to never fire a second "back" in a browser that does it itself) a
+   horizontal swipe and ⌘[ / ⌘] go back and forward.
+   ------------------------------------------------------------------ */
+function useSwipeBack() {
+  useEffect(() => {
+    if (!/\bClaude\//.test(navigator.userAgent)) return
+    let travelled = 0
+    let resetTimer = 0
+    let lockedUntil = 0
+    /* A swipe over something that scrolls sideways, or over a map, belongs to it. */
+    const ownsHorizontalScroll = (target: EventTarget | null, deltaX: number) => {
+      for (let el = target instanceof Element ? target : null; el && el !== document.body; el = el.parentElement) {
+        if (el.classList?.contains('leaflet-container')) return true
+        const style = getComputedStyle(el)
+        if (/(auto|scroll)/.test(style.overflowX) && el.scrollWidth > el.clientWidth) {
+          if (deltaX < 0 ? el.scrollLeft > 0 : el.scrollLeft + el.clientWidth < el.scrollWidth) return true
+        }
+      }
+      return false
+    }
+    const onWheel = (event: WheelEvent) => {
+      if (Date.now() < lockedUntil) return
+      if (Math.abs(event.deltaX) < 4 || Math.abs(event.deltaX) < Math.abs(event.deltaY) * 2) return
+      if (ownsHorizontalScroll(event.target, event.deltaX)) return
+      travelled += event.deltaX
+      window.clearTimeout(resetTimer)
+      resetTimer = window.setTimeout(() => (travelled = 0), 250)
+      if (Math.abs(travelled) > 160) {
+        // Fingers moving right scroll content left (negative deltaX): that is "back".
+        if (travelled < 0) window.history.back()
+        else window.history.forward()
+        travelled = 0
+        lockedUntil = Date.now() + 900 // the trackpad's momentum keeps sending wheel events
+      }
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if (!event.metaKey || (event.key !== '[' && event.key !== ']')) return
+      const target = event.target
+      if (target instanceof Element && target.closest('input, textarea, select, [contenteditable="true"]')) return
+      event.preventDefault()
+      if (event.key === '[') window.history.back()
+      else window.history.forward()
+    }
+    window.addEventListener('wheel', onWheel, { passive: true })
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('wheel', onWheel)
+      window.removeEventListener('keydown', onKey)
+      window.clearTimeout(resetTimer)
+    }
+  }, [])
+}
+
 export function AppShell({ children, title }: { children: ReactNode; title?: string }) {
   const path = usePathname()
   const { locale, setLocale, t } = useLanguage()
@@ -282,6 +342,7 @@ export function AppShell({ children, title }: { children: ReactNode; title?: str
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
+  useSwipeBack()
   return (
     <div className={`app-shell ${collapsed ? 'sidebar-collapsed' : ''}`}>
       <aside className={`sidebar ${mobile ? 'open' : ''} ${collapsed ? 'collapsed' : ''}`}>
@@ -305,6 +366,7 @@ export function AppShell({ children, title }: { children: ReactNode; title?: str
               key={href}
               href={href}
               className={`nav-item ${active === name ? 'active' : ''}`}
+              title={t(name)}
               onClick={() => setMobile(false)}
             >
               <Icon />
@@ -313,21 +375,26 @@ export function AppShell({ children, title }: { children: ReactNode; title?: str
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <Link className="nav-item" href="/sync">
+          {/* Titles name the icon when a narrow window shows icons only. */}
+          <Link className="nav-item" href="/sync" title={t('Sync sources')}>
             <Command />
             {t('Sync sources')}
           </Link>
-          <Link className="nav-item" href="/settings/password">
+          <Link className="nav-item" href="/settings/password" title={t('Change password')}>
             <KeyRound />
             {t('Change password')}
           </Link>
           <form action={logout}>
-            <button className="nav-item" type="submit">
+            <button className="nav-item" type="submit" title={t('Sign out')}>
               <LogOut />
               {t('Sign out')}
             </button>
           </form>
-          <button className="nav-item" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+          <button
+            className="nav-item"
+            title={t(theme === 'dark' ? 'Light theme' : 'Dark theme')}
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          >
             {theme === 'dark' ? <Sun /> : <Moon />}
             {t(theme === 'dark' ? 'Light theme' : 'Dark theme')}
           </button>

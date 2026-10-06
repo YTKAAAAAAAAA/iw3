@@ -45,7 +45,11 @@ export function MapPanel({ vacancyId }: { vacancyId?: string }) {
   const travel = useMemo(() => travelIndex(distances), [distances])
   const homes = useMemo(() => new Map(homeAreas.map(h => [h.workerId, h])), [homeAreas])
   const { t } = useLanguage()
-  const sites = vacancies.filter(v => v.lat !== null && v.lon !== null)
+  /* Archived and ended jobs are nowhere anyone goes to — off the site list,
+     except on that vacancy's own page. */
+  const sites = vacancies.filter(
+    v => v.lat !== null && v.lon !== null && (v.id === vacancyId || (!v.archivedAt && (!v.endDate || v.endDate >= today))),
+  )
   const [chosen, setChosen] = useState(vacancyId ?? sites[0]?.id ?? '')
   const siteId = vacancyId ?? chosen
   const [radius, setRadius] = useState(20)

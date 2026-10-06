@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { parseScheduleSave, type ScheduleSaveInput } from './schedule-persistence.ts'
 import type { Weekday } from './types.ts'
 
-const snapshot = (): ScheduleSaveInput => ({
+const snapshot = (): Required<ScheduleSaveInput> => ({
   revision: 0,
   demand: [{
     id: 'warehouse-slot-1', vacancyId: 'warehouse', date: '2026-09-28',
@@ -32,7 +32,7 @@ test('parses scoped schedule snapshots containing client temporary IDs', () => {
   assert.ok(parsed)
   assert.equal(parsed.demand[0].id, 'warehouse-slot-1')
   assert.equal(parsed.roster[0].workerId, '12')
-  assert.equal(parsed.offers[0].status, 'declined')
+  assert.equal(parsed.offers?.[0].status, 'declined')
 })
 
 test('rejects invalid and duplicate candidate offer records', () => {
@@ -67,6 +67,17 @@ test('rejects malformed time, invalid dates, duplicate IDs, and unsafe removals'
   const unsafeDelete = snapshot()
   unsafeDelete.deleteRosterIds = ['tmp-r-123']
   assert.equal(parseScheduleSave(unsafeDelete, 'warehouse'), null)
+})
+
+test('a save of changes only may leave out the standing and offer lists', () => {
+  const input: Partial<ScheduleSaveInput> = snapshot()
+  delete input.standing
+  delete input.offers
+  const parsed = parseScheduleSave({ ...input, roster: [{ ...snapshot().roster[0], position: 3 }] }, 'warehouse')
+  assert.ok(parsed)
+  assert.equal(parsed.standing, undefined)
+  assert.equal(parsed.roster[0].position, 3)
+  assert.equal(parseScheduleSave({ ...snapshot(), roster: [{ ...snapshot().roster[0], position: -1 }] }, 'warehouse'), null)
 })
 
 test('requires standing assignments to have valid weekdays and bounded date ranges', () => {

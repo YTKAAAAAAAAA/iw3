@@ -2,6 +2,7 @@ import 'server-only'
 import type { PoolClient } from 'pg'
 import { assertSession } from '@/lib/auth/guard'
 import { withDb } from '@/lib/db'
+import { oneByOne } from '@/lib/db/one-by-one'
 import { normalizeAddress } from '@/lib/travel/address'
 import { companyLogoUrl } from '@/lib/company-logo'
 import {
@@ -33,6 +34,9 @@ type ShiftRow = {
   section: string | null
   hours: string
   is_extra: boolean
+  scheduled_start: string | null
+  scheduled_end: string | null
+  note: string | null
 }
 
 /* Home coordinates are rounded to two decimals — about a kilometre — before
@@ -40,8 +44,8 @@ type ShiftRow = {
 const roundToArea = (value: number) => Math.round(value * 100) / 100
 
 async function loadWorkers(db: PoolClient): Promise<Worker[]> {
-  const [workerResult, accessResult, courseResult, qualificationResult] = await Promise.all([
-    db.query<{
+  const [workerResult, accessResult, courseResult, qualificationResult] = await oneByOne(
+    () => db.query<{
       id: number
       full_name: string
       fixed_course_days: string | null
@@ -60,20 +64,20 @@ async function loadWorkers(db: PoolClient): Promise<Worker[]> {
         flexpedia_city, dismissed_at::text
       FROM worker ORDER BY id
     `),
-    db.query<{ worker_id: number; company_id: number }>(
+    () => db.query<{ worker_id: number; company_id: number }>(
       `SELECT a.worker_id, a.company_id FROM worker_company_access a
        JOIN company c ON c.id = a.company_id AND c.archived_at IS NULL
        ORDER BY a.worker_id, a.company_id`,
     ),
-    db.query<{ worker_id: number; weekday: Worker['courseDays'][number] }>(
+    () => db.query<{ worker_id: number; weekday: Worker['courseDays'][number] }>(
       'SELECT worker_id, weekday FROM worker_course_day ORDER BY worker_id, weekday',
     ),
-    db.query<{ worker_id: number; kind: string; label: string; status: string }>(`
+    () => db.query<{ worker_id: number; kind: string; label: string; status: string }>(`
       SELECT worker_id, kind, label, status FROM worker_qualification
-      WHERE (kind = 'transport' AND label = 'Own car')
+      WHERE (kind = 'transport' AND label IN ('Own car', 'Bike'))
          OR (kind = 'document' AND label = 'VOG on file')
     `),
-  ])
+  )
 
   const access = new Map<number, string[]>()
   for (const row of accessResult.rows)
@@ -108,6 +112,7 @@ async function loadWorkers(db: PoolClient): Promise<Worker[]> {
       fullName: worker.full_name,
       city: worker.flexpedia_city,
       hasCar: qualifications.get(worker.id)?.get('transport:Own car') ?? null,
+      hasBike: qualifications.get(worker.id)?.get('transport:Bike') ?? null,
       hasVog: qualifications.get(worker.id)?.get('document:VOG on file') ?? null,
       courseDays: courseDays.get(worker.id) ?? legacyCourseDays,
       status: worker.is_active && !worker.is_fired ? 'active' : 'dismissed',
@@ -120,8 +125,8 @@ async function loadWorkers(db: PoolClient): Promise<Worker[]> {
 async function loadCompaniesAndVacancies(
   db: PoolClient,
 ): Promise<{ companies: Company[]; vacancies: Vacancy[] }> {
-  const [companyResult, vacancyResult, siteResult, requirementResult] = await Promise.all([
-    db.query<{
+  const [companyResult, vacancyResult, siteResult, requirementResult] = await oneByOne(
+    () => db.query<{
       id: number
       name: string
       contact_person: string | null
@@ -134,7 +139,7 @@ async function loadCompaniesAndVacancies(
       SELECT id, name, contact_person, phone, notes, logo_url, archived_at::text AS archived_at, logo_key
       FROM company ORDER BY name, id
     `),
-    db.query<{
+    () => db.query<{
       id: number
       slug: string
       title: string
@@ -160,15 +165,15 @@ async function loadCompaniesAndVacancies(
       FROM vacancy v
       ORDER BY (v.slug = 'warehouse') DESC, v.id
     `),
-    db.query<{ vacancy_id: number; slug: string; name: string; address: string }>(`
+    () => db.query<{ vacancy_id: number; slug: string; name: string; address: string }>(`
       SELECT vs.vacancy_id, s.slug, s.name, s.address
       FROM vacancy_site vs JOIN site s ON s.slug = vs.site_slug
       ORDER BY vs.vacancy_id, s.name
     `),
-    db.query<{ id: number; vacancy_id: number; kind: RequirementKind; label: string; is_required: boolean }>(
+    () => db.query<{ id: number; vacancy_id: number; kind: RequirementKind; label: string; is_required: boolean }>(
       'SELECT id, vacancy_id, kind, label, is_required FROM vacancy_requirement ORDER BY id',
     ),
-  ])
+  )
 
   const companies = companyResult.rows.map(company => ({
     id: `c-${company.id}`,
@@ -220,14 +225,14 @@ async function loadCompaniesAndVacancies(
 }
 
 async function loadSyncStatus(db: PoolClient): Promise<SyncStatus[]> {
-  const [warehouse, flexpedia] = await Promise.all([
-    db.query<{ supabase_enabled: boolean; last_sync_at: Date | null; last_error: string | null }>(
+  const [warehouse, flexpedia] = await oneByOne(
+    () => db.query<{ supabase_enabled: boolean; last_sync_at: Date | null; last_error: string | null }>(
       'SELECT supabase_enabled, last_sync_at, last_error FROM warehouse_sync_control WHERE singleton = TRUE',
     ),
-    db.query<{ last_sync_at: Date | null; last_error: string | null }>(
+    () => db.query<{ last_sync_at: Date | null; last_error: string | null }>(
       'SELECT last_sync_at, last_error FROM flexpedia_sync_control WHERE singleton = TRUE',
     ),
-  ])
+  )
   return [
     {
       source: 'supabase',
@@ -249,7 +254,9 @@ async function loadSyncStatus(db: PoolClient): Promise<SyncStatus[]> {
 async function loadShifts(db: PoolClient): Promise<ShiftRow[]> {
   const { rows } = await db.query<ShiftRow>(`
     SELECT sh.id, sh.date::text AS date, sh.worker_id, sh.site_slug, v.slug AS vacancy_slug,
-      sh.section, sh.hours::text AS hours, sh.is_extra
+      sh.section, sh.hours::text AS hours, sh.is_extra,
+      to_char(sh.scheduled_start, 'HH24:MI') AS scheduled_start,
+      to_char(sh.scheduled_end, 'HH24:MI') AS scheduled_end, sh.note
     FROM shift sh JOIN vacancy v ON v.id = sh.vacancy_id
     WHERE sh.confirmation_status IS DISTINCT FROM 'cancelled'
     ORDER BY sh.date, sh.site_slug, sh.section NULLS FIRST, sh.schedule_position, sh.id
@@ -258,8 +265,8 @@ async function loadShifts(db: PoolClient): Promise<ShiftRow[]> {
 }
 
 async function loadSchedule(db: PoolClient, shifts: ShiftRow[]) {
-  const [demandResult, standingResult, visibilityResult] = await Promise.all([
-    db.query<{
+  const [demandResult, standingResult, visibilityResult] = await oneByOne(
+    () => db.query<{
       id: number
       vacancy_slug: string
       date: string
@@ -276,8 +283,8 @@ async function loadSchedule(db: PoolClient, shifts: ShiftRow[]) {
       FROM vacancy_demand d JOIN vacancy v ON v.id = d.vacancy_id
       ORDER BY d.date, d.id
     `),
-    db.query<{ standing: StandingAssignment[] }>('SELECT standing FROM vacancy_schedule_state'),
-    db.query<{
+    () => db.query<{ standing: StandingAssignment[] }>('SELECT standing FROM vacancy_schedule_state'),
+    () => db.query<{
       vacancy_slug: string
       details: { worker_id?: string; date?: string | null; hidden?: boolean; reset?: boolean }
     }>(`
@@ -286,7 +293,7 @@ async function loadSchedule(db: PoolClient, shifts: ShiftRow[]) {
       WHERE vc.event_type = 'candidate_visibility'
       ORDER BY vc.id
     `),
-  ])
+  )
 
   const roster: RosterEntry[] = shifts.map(shift => ({
     id: String(shift.id),
@@ -298,12 +305,14 @@ async function loadSchedule(db: PoolClient, shifts: ShiftRow[]) {
     extra: shift.is_extra,
     extraReason: null,
     standingId: null,
-    start: null,
-    end: null,
+    /* Times were left out here, so every shift on another job looked like a
+       whole day and the one-hour rule could not tell a clash from a split shift. */
+    start: shift.scheduled_start,
+    end: shift.scheduled_end,
     outcome: 'planned',
     actualEnd: null,
     coversShiftId: null,
-    note: null,
+    note: shift.note,
   }))
 
   const demand: Demand[] = demandResult.rows.map(slot => ({
@@ -447,8 +456,8 @@ async function loadHours(db: PoolClient, shifts: ShiftRow[]): Promise<HoursEntry
 }
 
 async function loadTravel(db: PoolClient): Promise<{ travel: TravelDistance[]; homeAreas: HomeArea[] }> {
-  const [distanceResult, homeResult] = await Promise.all([
-    db.query<{
+  const [distanceResult, homeResult] = await oneByOne(
+    () => db.query<{
       worker_id: number
       vacancy_slug: string
       km: string
@@ -460,11 +469,11 @@ async function loadTravel(db: PoolClient): Promise<{ travel: TravelDistance[]; h
       FROM travel_distances t JOIN vacancy v ON v.id = t.vacancy_id
       WHERE t.valid_to IS NULL
     `),
-    db.query<{ id: number; home_address: string }>(`
+    () => db.query<{ id: number; home_address: string }>(`
       SELECT id, home_address FROM worker
       WHERE home_address IS NOT NULL AND is_active AND NOT is_fired
     `),
-  ])
+  )
   const geocoded = homeResult.rows.length
     ? await db.query<{ address_norm: string; lat: number; lon: number }>(
         'SELECT address_norm, lat, lon FROM geocode_cache WHERE resolved AND address_norm = ANY($1::text[])',

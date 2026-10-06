@@ -1,5 +1,6 @@
 'use client'
 
+import { DateField } from '@/components/date-field'
 import { useLanguage } from '@/lib/i18n'
 import { AddressPicker } from '@/components/address-picker'
 import { TimeField } from '@/components/app-shell'
@@ -64,22 +65,24 @@ export function VacancyFields({
 
       <label>
         {t('Start date')}
-        <input type="date" value={draft.startDate} onChange={e => set({ startDate: e.target.value })} />
+        <DateField value={draft.startDate} label={t('Start date')} onChange={startDate => set({ startDate })} />
       </label>
       <label>
         {t('End date')}
-        <input
-          type="date"
+        <DateField
           value={draft.endDate ?? ''}
+          label={t('End date')}
+          min={draft.startDate}
+          required={false}
           disabled={draft.endDate === null}
-          onChange={e => set({ endDate: e.target.value || null })}
+          onChange={endDate => set({ endDate: endDate || null })}
         />
       </label>
       <label className="checkbox-field">
         <input
           type="checkbox"
           checked={draft.endDate === null}
-          onChange={e => set({ endDate: e.target.checked ? null : today })}
+          onChange={e => set({ endDate: e.target.checked ? null : draft.startDate > today ? draft.startDate : today })}
         />{' '}
         {t('Open-ended vacancy')}
       </label>

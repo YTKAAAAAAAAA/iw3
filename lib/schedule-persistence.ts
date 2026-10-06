@@ -27,6 +27,8 @@ export type ScheduleRosterInput = {
   start: string | null
   end: string | null
   note: string | null
+  /** Order inside its slot (the number beside the name); appended when absent. */
+  position?: number
 }
 
 export type ScheduleStandingInput = {
@@ -43,14 +45,16 @@ export type ScheduleStandingInput = {
   note: string | null
 }
 
+/** A save carries only what changed: upserted rows, deleted ids, and the
+ *  standing/offer lists only when one of them changed (absent = untouched). */
 export type ScheduleSaveInput = {
   revision: number
   demand: ScheduleDemandInput[]
   roster: ScheduleRosterInput[]
   deleteDemandIds: string[]
   deleteRosterIds: string[]
-  standing: ScheduleStandingInput[]
-  offers: Offer[]
+  standing?: ScheduleStandingInput[]
+  offers?: Offer[]
 }
 
 const record = (value: unknown): value is JsonRecord =>
@@ -94,7 +98,9 @@ function parseRoster(value: unknown, vacancyId: string): ScheduleRosterInput | n
     || typeof value.extra !== 'boolean' || !nullableText(value.extraReason, 1000)
     || !(value.standingId === null || isId(value.standingId))
     || !(value.start === null || validTime(value.start)) || !(value.end === null || validTime(value.end))
-    || !nullableText(value.note, 2000)) return null
+    || !nullableText(value.note, 2000)
+    || !(value.position === undefined
+      || (Number.isSafeInteger(value.position) && (value.position as number) >= 0 && (value.position as number) <= 10000))) return null
   return value as unknown as ScheduleRosterInput
 }
 
@@ -135,26 +141,24 @@ export function parseScheduleSave(value: unknown, vacancyId: string): ScheduleSa
   if (!record(value) || !Number.isSafeInteger(value.revision) || (value.revision as number) < 0
     || !Array.isArray(value.demand) || value.demand.length > 5000
     || !Array.isArray(value.roster) || value.roster.length > 5000
-    || !Array.isArray(value.standing) || value.standing.length > 1000
-    || !Array.isArray(value.offers) || value.offers.length > 5000
+    || !(value.standing === undefined || (Array.isArray(value.standing) && value.standing.length <= 1000))
+    || !(value.offers === undefined || (Array.isArray(value.offers) && value.offers.length <= 5000))
     || !deletions(value.deleteDemandIds) || !deletions(value.deleteRosterIds)) return null
 
   const demand = value.demand.map(item => parseDemand(item, vacancyId))
   const roster = value.roster.map(item => parseRoster(item, vacancyId))
-  const standing = value.standing.map(item => parseStanding(item, vacancyId))
-  const offers = value.offers.map(item => parseOffer(item, vacancyId))
+  const standing = Array.isArray(value.standing) ? value.standing.map(item => parseStanding(item, vacancyId)) : undefined
+  const offers = Array.isArray(value.offers) ? value.offers.map(item => parseOffer(item, vacancyId)) : undefined
   if (demand.some(item => item === null) || roster.some(item => item === null)
-    || standing.some(item => item === null) || offers.some(item => item === null)
+    || standing?.some(item => item === null) || offers?.some(item => item === null)
     || !uniqueIds(demand as ScheduleDemandInput[]) || !uniqueIds(roster as ScheduleRosterInput[])
-    || !uniqueIds(standing as ScheduleStandingInput[]) || !uniqueIds(offers as Offer[])) return null
+    || (standing && !uniqueIds(standing as ScheduleStandingInput[])) || (offers && !uniqueIds(offers as Offer[]))) return null
 
   const demandIds = new Set((demand as ScheduleDemandInput[]).map(item => item.id))
   const rosterIds = new Set((roster as ScheduleRosterInput[]).map(item => item.id))
-  const standingIds = new Set((standing as ScheduleStandingInput[]).map(item => item.id))
-  const offerKeys = (offers as Offer[]).map(item => `${item.workerId}\u0000${item.date ?? '*'}`)
+  const offerKeys = ((offers ?? []) as Offer[]).map(item => `${item.workerId}\u0000${item.date ?? '*'}`)
   if (value.deleteDemandIds.some(id => demandIds.has(id))
     || value.deleteRosterIds.some(id => rosterIds.has(id))
-    || (roster as ScheduleRosterInput[]).some(row => row.standingId !== null && !standingIds.has(row.standingId))
     || new Set(offerKeys).size !== offerKeys.length) return null
 
   return {
@@ -163,7 +167,7 @@ export function parseScheduleSave(value: unknown, vacancyId: string): ScheduleSa
     roster: roster as ScheduleRosterInput[],
     deleteDemandIds: value.deleteDemandIds,
     deleteRosterIds: value.deleteRosterIds,
-    standing: standing as ScheduleStandingInput[],
-    offers: offers as Offer[],
+    ...(standing ? { standing: standing as ScheduleStandingInput[] } : {}),
+    ...(offers ? { offers: offers as Offer[] } : {}),
   }
 }

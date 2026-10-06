@@ -3,6 +3,7 @@ import 'server-only'
 import { Pool, type PoolClient } from 'pg'
 import { withDb } from '@/lib/db'
 import { withTransactionRetry } from '@/lib/db/retry'
+import { oneByOne } from '@/lib/db/one-by-one'
 import { parseCourseDays, resolveWarehouseWorkerMatch, warehouseSiteSlug } from './warehouse-mapping'
 import { isImplausibleRemoval, sourceRecordsMissingLocally } from './source-reconciliation'
 import type { WarehouseSyncStatus, WarehouseSyncSummary } from './types'
@@ -84,28 +85,28 @@ async function readSourceSnapshot(): Promise<SourceSnapshot> {
   let client: PoolClient | undefined
   let transactionStarted = false
   try {
-    client = await pool.connect()
-    await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY')
+    const source = client = await pool.connect()
+    await source.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY')
     transactionStarted = true
-    const [workers, shifts, vacations] = await Promise.all([
-      client.query<SourceWorker>(`
+    const [workers, shifts, vacations] = await oneByOne(
+      () => source.query<SourceWorker>(`
         SELECT id, full_name, preferred_object, notes, is_active, rating, cc,
           fixed_course_days, is_fired, recommend_for_schedules
         FROM public.workers
         ORDER BY id
       `),
-      client.query<SourceShift>(`
+      () => source.query<SourceShift>(`
         SELECT id, date::text AS date, worker_id, "object", sub_object, hours::text AS hours
         FROM public.schedule
         ORDER BY id
       `),
-      client.query<SourceVacation>(`
+      () => source.query<SourceVacation>(`
         SELECT id, worker_id, start_date::text AS start_date,
           end_date::text AS end_date, reason
         FROM public.vacations
         ORDER BY id
       `),
-    ])
+    )
     await client.query('COMMIT')
     transactionStarted = false
     const snapshot = {
@@ -374,6 +375,7 @@ async function syncSnapshot(db: PoolClient, snapshot: SourceSnapshot): Promise<W
   }
 
   const linkedShiftsBefore = targetShiftBySourceId.size
+  const shiftChangesBefore = counts.shiftsAdded + counts.shiftsUpdated + counts.shiftsDeleted
   for (const source of snapshot.shifts) {
     const workerId = workerIds.get(source.worker_id)
     if (!workerId) throw new SyncSourceError('A schedule row does not have a synced worker.')
@@ -441,6 +443,15 @@ async function syncSnapshot(db: PoolClient, snapshot: SourceSnapshot): Promise<W
     await db.query('DELETE FROM shift_offer WHERE shift_id = $1', [staleShift.id])
     await db.query('DELETE FROM shift WHERE id = $1 AND vacancy_id = $2', [staleShift.id, vacancy.rows[0].id])
     counts.shiftsDeleted++
+  }
+  /* A schedule page that is open while this runs must not save its older copy
+     over the synced shifts: a new revision makes its next save fetch these
+     first and replay only its own changes on top. */
+  if (counts.shiftsAdded + counts.shiftsUpdated + counts.shiftsDeleted !== shiftChangesBefore) {
+    await db.query(`
+      INSERT INTO vacancy_schedule_state (vacancy_id, revision) VALUES ($1, 1)
+      ON CONFLICT (vacancy_id) DO UPDATE SET revision = vacancy_schedule_state.revision + 1, updated_at = now()
+    `, [vacancy.rows[0].id])
   }
 
   const targetAbsences = await db.query<{

@@ -148,6 +148,15 @@ const dutch: Record<string, string> = {
   Sun: 'zo',
   'Click to pick · shift-click for a span': 'Klik om te selecteren · shift-klik voor een periode',
   'days selected': 'dagen geselecteerd',
+  '{count} days selected': '{count} dagen geselecteerd',
+  '{count} days off': '{count} vrije dagen',
+  'Tap the first and last day, then Fill': 'Tik op de eerste en laatste dag, dan Aanvullen',
+  'Fill {from} – {to}': 'Aanvullen {from} – {to}',
+  'Pick every day from the first to the last': 'Selecteer elke dag van de eerste tot de laatste',
+  '{date} is assigned — remove the assignment before marking it off.':
+    '{date} is ingepland — haal de dienst eerst weg voordat je de dag vrij geeft.',
+  '{count} of the selected days are assigned and were left alone — remove those assignments first.':
+    '{count} van de geselecteerde dagen zijn ingepland en blijven ongewijzigd — haal die diensten eerst weg.',
   'Nothing picked yet': 'Nog geen dagen geselecteerd',
   Clear: 'Wissen',
   'Pick one or more days in the calendar above.': 'Selecteer hierboven een of meer dagen in de kalender.',
@@ -168,8 +177,12 @@ const dutch: Record<string, string> = {
     'Maak diensten aan op basis van deze vaste afspraken voor de getoonde dagen',
   'Create shifts for these days': 'Diensten voor deze dagen aanmaken',
   Schedule: 'Planning',
-  'Hide the day-by-day plan': 'Dagplanning verbergen',
-  'Day-by-day plan · {count} shifts placed': 'Dagplanning · {count} diensten ingepland',
+  'View and manage the day-by-day plan': 'Bekijk en beheer de dagplanning',
+  'Week {week}': 'Week {week}',
+  '{worked} / {total} days': '{worked} / {total} dagen',
+  'Photos: {count}': "Foto's: {count}",
+  'Add photos for {date}': "Foto's toevoegen voor {date}",
+  'Open the day: slots, people and photos': "Dag openen: diensten, mensen en foto's",
   'Share view': 'Planning delen',
   'Available people': 'Beschikbare medewerkers',
   'Add slot': 'Dienst toevoegen',
@@ -346,6 +359,7 @@ const dutch: Record<string, string> = {
   'Client contacts and access coverage.': 'Contactpersonen van klanten en wie er toegang heeft.',
   'Add company': 'Bedrijf toevoegen',
   '{count} people with access': '{count} medewerkers met toegang',
+  '1 person with access': '1 medewerker met toegang',
   'Edit company': 'Bedrijf bewerken',
   'Company name': 'Bedrijfsnaam',
   'Contact person': 'Contactpersoon',
@@ -356,6 +370,257 @@ const dutch: Record<string, string> = {
   'Replace logo': 'Logo vervangen',
   'Remove logo': 'Logo verwijderen',
   'Save company': 'Bedrijf opslaan',
+  // Schedule: saving, warnings and the map picker.
+  '{staffed} of {needed} people — open this day':
+    '{staffed} van {needed} mensen — open deze dag',
+  'Vacancies needing people':
+    'Vacatures die mensen nodig hebben',
+  '{open} open · {running} in progress':
+    '{open} open · {running} in uitvoering',
+  'dd.mm.yyyy':
+    'dd.mm.jjjj',
+  'Pick a date':
+    'Kies een datum',
+  'Where the client needs people, from when, and how many.':
+    'Waar de klant mensen nodig heeft, vanaf wanneer en hoeveel.',
+  '+{count} more':
+    '+{count} meer',
+  'Also works that day: {jobs}':
+    'Werkt die dag ook: {jobs}',
+  'Cannot do both: also on {job}':
+    'Kan niet allebei: ook ingepland bij {job}',
+  'Ended {date}':
+    'Beëindigd {date}',
+  'Farthest first':
+    'Verste eerst',
+  'Nearest first':
+    'Dichtstbijzijnde eerst',
+  'Needs people':
+    'Mensen nodig',
+  'Sort by start':
+    'Sorteren op start',
+  'Started today':
+    'Vandaag gestart',
+  'Started {date}':
+    'Gestart {date}',
+  'Starts in {count} days · {date}':
+    'Start over {count} dagen · {date}',
+  'Starts tomorrow · {date}':
+    'Start morgen · {date}',
+  'VOG on file':
+    'VOG aanwezig',
+  'VOG: any':
+    'VOG: alle',
+  'already in this slot':
+    'staat al in deze dienst',
+  'also works at {job}':
+    'werkt ook bij {job}',
+  'also {job}':
+    'ook {job}',
+  'cannot — under an hour apart':
+    'kan niet — minder dan een uur ertussen',
+  'from {time}':
+    'vanaf {time}',
+  'until {time}':
+    'tot {time}',
+  'works at {job} — less than an hour apart':
+    'werkt bij {job} — minder dan een uur ertussen',
+  'works elsewhere that day':
+    'werkt die dag elders',
+  '{count} need people':
+    '{count} hebben mensen nodig',
+  '{count} short':
+    '{count} tekort',
+  '{staffed} of {needed} people':
+    '{staffed} van {needed} mensen',
+  'Confirm':
+    'Bevestigen',
+  '1 place left':
+    'nog 1 plaats',
+  'Busy every day of this period':
+    'Elke dag van deze periode bezet',
+  'End: not recorded — people leave when the work is done, so the rest of that day is blocked for them':
+    'Einde: niet vastgelegd — mensen gaan als het werk klaar is, dus de rest van die dag is voor hen geblokkeerd',
+  'End: set per day':
+    'Einde: per dag ingesteld',
+  'End: {times}':
+    'Einde: {times}',
+  'End: {time} (overtime extends it)':
+    'Einde: {time} (overwerk verlengt het)',
+  'Free all {count} day':
+    '{count} dag, beschikbaar',
+  'Free all {count} days':
+    'Alle {count} dagen beschikbaar',
+  'Free from {date} · {taken}':
+    'Beschikbaar vanaf {date} · {taken}',
+  'Never free for a whole run · {taken}':
+    'Nooit een hele reeks beschikbaar · {taken}',
+  'No working days in this period':
+    'Geen werkdagen in deze periode',
+  'People: set per day (usually {count})':
+    'Mensen: per dag ingesteld (meestal {count})',
+  'People: varies by weekday':
+    'Mensen: verschilt per weekdag',
+  'People: {count} per slot':
+    'Mensen: {count} per dienst',
+  'Places: none — the site is ordered as a whole':
+    'Plaatsen: geen — de locatie wordt als geheel besteld',
+  'Places: {places} — sections inside them are typed per day':
+    'Plaatsen: {places} — afdelingen daarbinnen worden per dag ingevuld',
+  'Start: not recorded':
+    'Start: niet vastgelegd',
+  'Start: set per day':
+    'Start: per dag ingesteld',
+  'Start: set per day (usually {times})':
+    'Start: per dag ingesteld (meestal {times})',
+  'Start: {times}':
+    'Start: {times}',
+  'Start: {time}, every day':
+    'Start: {time}, elke dag',
+  'Times: none — the day records who was there, not when':
+    'Tijden: geen — de dag legt vast wie er was, niet wanneer',
+  'Working days: no fixed pattern — every day comes from the client’s own schedule':
+    'Werkdagen: geen vast patroon — elke dag komt uit de eigen planning van de klant',
+  'Working days: {days}':
+    'Werkdagen: {days}',
+  'Working days: {days} (exceptions are added per day)':
+    'Werkdagen: {days} (uitzonderingen worden per dag toegevoegd)',
+  'slot time':
+    'diensttijd',
+  '{count} already on this job':
+    '{count} al op deze vacature',
+  '{count} at a course':
+    '{count} op cursus',
+  '{count} on leave':
+    '{count} afwezig',
+  '{count} on other work':
+    '{count} op ander werk',
+  '{name} is already on {job}{time} on {date}.':
+    '{name} is op {date} al ingepland bij {job}{time}.',
+  '{taken} of {total} taken ({reasons})':
+    '{taken} van {total} bezet ({reasons})',
+  'Also on {job} at the same time':
+    'Tegelijk ook ingepland bij {job}',
+  'Any transport':
+    'Elk vervoer',
+  'Assign {count}':
+    '{count} inplannen',
+  'Car or bike':
+    'Auto of fiets',
+  'Clear “declined”':
+    '“Afgewezen” wissen',
+  'Create shifts for {range}':
+    'Diensten aanmaken voor {range}',
+  'End {name}? Their {count} planned shifts after today are removed too.':
+    '{name} beëindigen? De {count} geplande diensten na vandaag worden ook verwijderd.',
+  'Fewer people than ordered':
+    'Minder mensen dan besteld',
+  'Hide from selection':
+    'Verbergen bij selectie',
+  'Hide hidden people':
+    'Verborgen mensen verbergen',
+  'Mark as declined':
+    'Als afgewezen markeren',
+  'Mark offered':
+    'Als aangeboden markeren',
+  'More people than ordered':
+    'Meer mensen dan besteld',
+  'Nobody matches these filters.':
+    'Niemand voldoet aan deze filters.',
+  'On leave this day — not counted, find a replacement':
+    'Deze dag afwezig — telt niet mee, zoek een vervanger',
+  'Only free people':
+    'Alleen beschikbare mensen',
+  'Own transport':
+    'Eigen vervoer',
+  'Remove {slot} on {date}? The {count} people on it are taken off too.':
+    '{slot} op {date} verwijderen? De {count} ingeplande mensen worden ook verwijderd.',
+  'Search a name':
+    'Zoek een naam',
+  'Show hidden · {count}':
+    'Verborgen tonen · {count}',
+  'Show in selection again':
+    'Weer tonen bij selectie',
+  'That change was undone.':
+    'Die wijziging is teruggedraaid.',
+  'The slot is full':
+    'De dienst is vol',
+  'This vacancy has no address on the map yet. Add one in the vacancy details.':
+    'Deze vacature heeft nog geen adres op de kaart. Voeg er een toe bij de vacaturegegevens.',
+  'already on this job today':
+    'vandaag al op deze vacature',
+  'already on {job}':
+    'al ingepland bij {job}',
+  'another job':
+    'een andere vacature',
+  'any distance':
+    'elke afstand',
+  'at a course this weekday':
+    'op deze weekdag op cursus',
+  'bike':
+    'fiets',
+  'car and bike':
+    'auto en fiets',
+  'declined':
+    'afgewezen',
+  'does not fit':
+    'voldoet niet',
+  'double-booked':
+    'dubbel ingepland',
+  'free':
+    'beschikbaar',
+  'hidden':
+    'verborgen',
+  'no address':
+    'geen adres',
+  'no car — this site needs one':
+    'geen auto — deze locatie vereist er een',
+  'no own transport':
+    'geen eigen vervoer',
+  'none':
+    'geen',
+  'offered':
+    'aangeboden',
+  'on another shift':
+    'op een andere dienst',
+  'on leave':
+    'afwezig',
+  'transport unknown':
+    'vervoer onbekend',
+  '{count} more than ordered':
+    '{count} meer dan besteld',
+  '{count} selected':
+    '{count} geselecteerd',
+  '{count} without a home address — in the list only':
+    '{count} zonder woonadres — alleen in de lijst',
+  '{filled} of {ordered} people on this day':
+    '{filled} van {ordered} mensen op deze dag',
+  '{left} places left':
+    'nog {left} plaatsen',
+  '{staffed} of {ordered} staffed':
+    '{staffed} van {ordered} bezet',
+  'Saving schedule…':
+    'Planning opslaan…',
+  'Schedule saved':
+    'Planning opgeslagen',
+  'Updated with changes made elsewhere':
+    'Bijgewerkt met wijzigingen van elders',
+  'The schedule changed elsewhere. Loading the latest version…':
+    'De planning is elders gewijzigd. De nieuwste versie wordt geladen…',
+  'There is already a slot or shift like this on that day.':
+    'Er is op die dag al zo’n dienst of inplanning.',
+  'The same person is on two overlapping shifts in this change.':
+    'Dezelfde persoon staat in deze wijziging op twee overlappende diensten.',
+  'Could not reach the server.':
+    'De server is niet bereikbaar.',
+  'Could not save the schedule.':
+    'De planning kon niet worden opgeslagen.',
+  'A shift with attendance or actual-time records cannot be moved or reassigned.':
+    'Een dienst met aanwezigheid of werkelijke tijden kan niet worden verplaatst of aan iemand anders gegeven.',
+  'A shift with attendance or actual-time records cannot be removed.':
+    'Een dienst met aanwezigheid of werkelijke tijden kan niet worden verwijderd.',
+  'Only active workers with access to this company can be added to the schedule.':
+    'Alleen actieve medewerkers met toegang tot dit bedrijf kunnen worden ingepland.',
   'Archive company': 'Bedrijf archiveren',
   'Archive {name}? {people} people lose access and {vacancies} open vacancies are archived. Shifts and hours stay in history, and the company can be restored.':
     '{name} archiveren? {people} medewerkers verliezen toegang en {vacancies} open vacatures worden gearchiveerd. Diensten en uren blijven bewaard en het bedrijf kan worden hersteld.',
@@ -612,6 +877,11 @@ const dutch: Record<string, string> = {
     '{days} dagen — alleen de werkdagen van deze afspraak ({weekdays}) veranderen, {touched} in deze periode.',
   'Nobody else holds this contract': 'Niemand anders heeft toegang tot deze klant',
   'No car': 'Geen auto',
+  Car: 'Auto',
+  Bike: 'Fiets',
+  None: 'Geen',
+  Paid: 'Betaald',
+  Weekend: 'Weekend',
   'Does not meet requirements': 'Voldoet niet aan de eisen',
   Unavailable: 'Niet beschikbaar',
   'Add a standing person': 'Vaste medewerker toevoegen',

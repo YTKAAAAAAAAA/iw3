@@ -21,6 +21,8 @@ export type Worker = {
   /** Town only — enough to plan travel, not enough to find the house. */
   city: string | null
   hasCar: boolean | null
+  /** A bike of their own: enough for a site in town, not for a car-only one. */
+  hasBike: boolean | null
   hasVog: boolean | null
   courseDays: Weekday[]
   status: 'active' | 'dismissed'
@@ -245,6 +247,24 @@ export const formatDate = (value: ISODate | ISODateTime | null) => {
 /** 04.10 — for day columns where the year is already on screen. */
 export const formatShortDate = (value: ISODate) => formatDate(value).slice(0, 5)
 /** 04.10.2026 14:05 in Amsterdam time, on a 24-hour clock. */
+/** Reads what people type for a date — 05.10.2026, 5.10.2026, 05-10-2026,
+ *  05/10/26, 05102026 or 2026-10-05 — as an ISO date. Day first, always;
+ *  null when it is not a real date. */
+export const parseDate = (text: string): ISODate | null => {
+  const value = text.trim()
+  let day: number, month: number, year: number
+  let match = value.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
+  if (match) [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])]
+  else if ((match = value.match(/^(\d{1,2})[.\-/ ](\d{1,2})[.\-/ ](\d{2}|\d{4})$/)))
+    [day, month, year] = [Number(match[1]), Number(match[2]), Number(match[3])]
+  else if ((match = value.match(/^(\d{2})(\d{2})(\d{4})$/)))
+    [day, month, year] = [Number(match[1]), Number(match[2]), Number(match[3])]
+  else return null
+  if (year < 100) year += 2000
+  const iso = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+  const check = new Date(`${iso}T12:00:00Z`)
+  return Number.isNaN(check.getTime()) || check.toISOString().slice(0, 10) !== iso ? null : iso
+}
 export const formatDateTime = (value: ISODateTime | null) => {
   if (!value) return '—'
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {

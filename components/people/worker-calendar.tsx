@@ -17,7 +17,9 @@ import { useToday } from '@/lib/today'
    clicking through fourteen dialogs to enter it is how people stop entering
    it at all. Tapping a day adds it to the selection, tapping it again takes
    it out, and shift-clicking fills the span between — then one action covers
-   everything picked. The same selection is what removes leave again.
+   everything picked. A phone has no shift key: there, tapping the first and
+   the last day and then "Fill" picks the days between. The same selection is
+   what removes leave again.
    ------------------------------------------------------------------ */
 export function Calendar({ workerId }: { workerId: string }) {
   const { t } = useLanguage()
@@ -68,6 +70,8 @@ export function Calendar({ workerId }: { workerId: string }) {
     leaveOn(date) ? 'leave' : assignmentOn(workerId, date, null, roster, vacancies) ? 'working' : 'free'
 
   const chosen = [...picked].sort()
+  /* Picked days with gaps between them: "Fill" closes the gaps. */
+  const gaps = chosen.length > 1 && span(chosen[0], chosen[chosen.length - 1]).length > chosen.length
   /* Three reasons a picked day cannot take a day off, each worth naming: it
      has already gone, somebody is expecting this person on a job, or it is
      already a day off. */
@@ -167,18 +171,25 @@ export function Calendar({ workerId }: { workerId: string }) {
           <span key={d}>{d}</span>
         ))}
       </div>
+      {/* Time off fills the whole day, paid leave in a solid colour with its own
+          word under the number: a dot under the date was easy to miss, and paid
+          and unpaid looked the same although payroll treats them differently. */}
       <div className="calendar-grid">
-        {days.map(date => {
+        {days.map((date, index) => {
           const state = dayState(date)
+          const paidLeave = state === 'leave' && leaveOn(date)?.paidLeave === true
+          const weekend = index % 7 >= 5
           return (
             <button
               key={date}
               onClick={e => choose(date, e.shiftKey)}
               aria-pressed={picked.includes(date)}
-              className={`calendar-day ${date.slice(0, 7) !== monthKey ? 'muted' : ''} ${date === today ? 'today' : ''} ${picked.includes(date) ? 'picked' : ''} ${state}`}
+              aria-label={`${formatDate(date)}${paidLeave ? `, ${t('Paid leave')}` : state === 'leave' ? `, ${t('Leave')}` : ''}`}
+              className={`calendar-day ${date.slice(0, 7) !== monthKey ? 'muted' : ''} ${date === today ? 'today' : ''} ${picked.includes(date) ? 'picked' : ''} ${weekend ? 'weekend' : ''} ${state} ${paidLeave ? 'paid' : ''}`}
             >
               <span>{Number(date.slice(-2))}</span>
-              {state !== 'free' && <i />}
+              {paidLeave && <small>{t('Paid')}</small>}
+              {state === 'working' && <i />}
             </button>
           )
         })}
@@ -189,14 +200,19 @@ export function Calendar({ workerId }: { workerId: string }) {
           {t('Working')}
         </span>
         <span>
-          <i className="leave" />
+          <b className="swatch leave" />
           {t('Leave')}
         </span>
         <span>
-          <i className="free" />
-          {t('Free')}
+          <b className="swatch paid" />
+          {t('Paid leave')}
         </span>
-        <span className="legend-hint">{t('Click to pick · shift-click for a span')}</span>
+        <span>
+          <b className="swatch weekend" />
+          {t('Weekend')}
+        </span>
+        <span className="legend-hint legend-hint-mouse">{t('Click to pick · shift-click for a span')}</span>
+        <span className="legend-hint legend-hint-touch">{t('Tap the first and last day, then Fill')}</span>
       </div>
 
       <Panel className="selected-day">
@@ -207,7 +223,7 @@ export function Calendar({ workerId }: { workerId: string }) {
         )}
         <div className="panel-header">
           <div>
-            <h2>{single ? formatDate(single) : `${chosen.length} days selected`}</h2>
+            <h2>{single ? formatDate(single) : t('{count} days selected', { count: chosen.length })}</h2>
             <p>
               {single
                 ? single === today
@@ -222,13 +238,30 @@ export function Calendar({ workerId }: { workerId: string }) {
           </div>
           {single && (
             <Badge tone={leaveOn(single) ? 'orange' : info ? 'blue' : 'neutral'}>
-              {leaveOn(single) ? t('Leave') : info ? t('Working') : t('Free')}
+              {leaveOn(single)
+                ? leaveOn(single)?.paidLeave
+                  ? t('Paid leave')
+                  : t('Leave')
+                : info
+                  ? t('Working')
+                  : t('Free')}
             </Badge>
           )}
           {!single && chosen.length > 0 && (
-            <button className="button button-secondary button-small" onClick={() => setPicked([])}>
-              {t('Clear')}
-            </button>
+            <span className="selected-day-actions">
+              {gaps && (
+                <button
+                  className="button button-secondary button-small"
+                  onClick={() => setPicked(span(chosen[0], chosen[chosen.length - 1]))}
+                  title={t('Pick every day from the first to the last')}
+                >
+                  {t('Fill {from} – {to}', { from: formatDate(chosen[0]), to: formatDate(chosen[chosen.length - 1]) })}
+                </button>
+              )}
+              <button className="button button-secondary button-small" onClick={() => setPicked([])}>
+                {t('Clear')}
+              </button>
+            </span>
           )}
         </div>
 
@@ -237,7 +270,7 @@ export function Calendar({ workerId }: { workerId: string }) {
         {removable.length > 0 && (
           <div className="day-action">
             <strong>
-              {removable.length === 1 ? leaveOn(removable[0])!.reason : `${removable.length} days off`}
+              {removable.length === 1 ? leaveOn(removable[0])!.reason : t('{count} days off', { count: removable.length })}
             </strong>
             <span>
               {removable.length === 1
@@ -251,7 +284,7 @@ export function Calendar({ workerId }: { workerId: string }) {
               onClick={() => void removeOff()}
               disabled={savingAbsence}
             >
-              {removable.length === 1 ? t('Remove day off') : `Remove ${removable.length} days off`}
+              {removable.length === 1 ? t('Remove day off') : t('Remove {count} days off', { count: removable.length })}
             </button>
           </div>
         )}
@@ -273,7 +306,7 @@ export function Calendar({ workerId }: { workerId: string }) {
                 ? t('Saving…')
                 : markable.length === 1
                   ? t('Mark as day off')
-                  : `Mark ${markable.length} days off`}
+                  : t('Mark {count} days off', { count: markable.length })}
             </button>
           </div>
         )}
@@ -281,8 +314,10 @@ export function Calendar({ workerId }: { workerId: string }) {
         {assigned.length > 0 && (
           <p className="muted-copy">
             {assigned.length === 1
-              ? `${formatDate(assigned[0])} is assigned — remove the assignment before marking it off.`
-              : `${assigned.length} of the selected days are assigned and were left alone — remove those assignments first.`}
+              ? t('{date} is assigned — remove the assignment before marking it off.', { date: formatDate(assigned[0]) })
+              : t('{count} of the selected days are assigned and were left alone — remove those assignments first.', {
+                  count: assigned.length,
+                })}
           </p>
         )}
         {pastDays.length > 0 && (

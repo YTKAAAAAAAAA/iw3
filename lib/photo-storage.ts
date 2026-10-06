@@ -10,7 +10,10 @@ import type { WorkdayPhotoType } from './workday-photo'
    directory of files is cheap to store and to copy. The database keeps only
    the metadata and the file's key. In Docker the directory is a named volume
    (see compose.yaml), and the backup service archives it next to the dump. */
-const ROOT = resolve(process.env.PHOTO_STORAGE_DIR ?? join(process.cwd(), 'data', 'photos'))
+/* The directory is only known at run time. Without `turbopackIgnore` the
+   build cannot tell which files these paths may reach and copies the whole
+   project into the standalone image to be safe. */
+const ROOT = resolve(/*turbopackIgnore: true*/ process.env.PHOTO_STORAGE_DIR ?? join(/*turbopackIgnore: true*/ process.cwd(), 'data', 'photos'))
 const EXTENSION: Record<WorkdayPhotoType, string> = {
   'image/jpeg': 'jpg',
   'image/png': 'png',
@@ -22,13 +25,13 @@ const KEY = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(jpg
  *  never point outside the photo directory. */
 function pathFor(key: string): string {
   if (!KEY.test(key)) throw new Error('Invalid photo storage key.')
-  return join(ROOT, key)
+  return join(/*turbopackIgnore: true*/ ROOT, key)
 }
 
 export async function savePhoto(bytes: Uint8Array, type: WorkdayPhotoType): Promise<string> {
   await mkdir(ROOT, { recursive: true })
   const key = `${randomUUID()}.${EXTENSION[type]}`
-  const temporary = join(ROOT, `.${key}.tmp`)
+  const temporary = join(/*turbopackIgnore: true*/ ROOT, `.${key}.tmp`)
   // Written beside the target and renamed, so a crash never leaves half a file under a real key.
   await writeFile(temporary, bytes, { flag: 'wx' })
   await rename(temporary, pathFor(key))

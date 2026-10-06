@@ -175,16 +175,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ sl
           if (currentSites.has(place.id)) {
             retained.add(place.id)
             await db.query(`
-              UPDATE site SET name = $2, address = $3, company = $4, company_id = $5
+              UPDATE site SET name = $2, address = $3, company_id = $4
               WHERE slug = $1
-            `, [place.id, place.name.trim(), addressLabel ?? '', company.rows[0].name, Number(companyMatch[1])])
+            `, [place.id, place.name.trim(), addressLabel ?? '', Number(companyMatch[1])])
             savedPlaces.push({ requestedId: place.id, id: place.id, name: place.name.trim() })
           } else {
             const siteSlug = `${slug}-${randomUUID()}`
             await db.query(`
-              INSERT INTO site (slug, name, company, address, company_id)
-              VALUES ($1, $2, $3, $4, $5)
-            `, [siteSlug, place.name.trim(), company.rows[0].name, addressLabel ?? '', Number(companyMatch[1])])
+              INSERT INTO site (slug, name, address, company_id)
+              VALUES ($1, $2, $3, $4)
+            `, [siteSlug, place.name.trim(), addressLabel ?? '', Number(companyMatch[1])])
             await db.query('INSERT INTO vacancy_site (vacancy_id, site_slug) VALUES ($1, $2)', [vacancy.id, siteSlug])
             retained.add(siteSlug)
             savedPlaces.push({ requestedId: place.id, id: siteSlug, name: place.name.trim() })

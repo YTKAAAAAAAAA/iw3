@@ -11,25 +11,33 @@
      themes read as one product rather than two.
      The stylesheet used to carry 109 hand-picked hex values with no family
      between them; every colour now comes from here. */
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  /* 2026-10: the green palette from the user's own Schedule design — a mint
+     page, white cards and a sage accent. Sampled from the mockups, then each
+     text pair re-measured (fg 15.6:1, muted 6.3:1 on the page). */
+  --background: #eaf2eb;
+  --foreground: #0f1a14;
   --card: #ffffff;
-  --card-foreground: #0f172a;
-  --muted: #f1f5fd;
+  --card-foreground: #0f1a14;
+  --muted: #f0f5f1;
   /* 7.24:1 on the page, 7.58:1 on a card. The old #686f78 scraped 4.5 and had
      to be re-checked after every background change. */
-  --muted-foreground: #475569;
-  --border: #e4ecfc;
-  --input: #cbd9f5;
-  /* The primary CTA. Deliberately the palette's blue and not its green accent:
-     green already means "this person is free" everywhere in this product, and
-     a green Create button would blur a signal the planner reads all day. */
-  --primary: #2563eb;
-  --primary-hover: #1d4ed8;
+  --muted-foreground: #4d5a52;
+  --border: #dbe7dd;
+  --input: #bfd2c2;
+  /* The primary CTA is the design's green now (it used to be blue, to keep
+     green for "free"). Free stays readable because it is a dot or a badge,
+     never a filled button. White on this green is 5.6:1. */
+  --primary: #3b7449;
+  --primary-hover: #30613d;
   --primary-foreground: #ffffff;
-  --accent: #eff6ff;
-  --accent-foreground: #1d4ed8;
-  --ring: #2563eb;
+  --accent: #d4e4d3;
+  --accent-foreground: #1f3a26;
+  --ring: #3b7449;
+  /* The schedule's own greens: a highlighted week or day, and the icons. */
+  --green-plate: #e8f3eb;
+  --green-line: #96b49c;
+  --green-ink: #4f8a58;
+  --week-plate: #edf5ee;
   /* The logo's own colours. Fixed by the brand, not by the theme — only the
      blue lifts in the dark theme, because the original is drawn for white
      paper and goes invisible on a dark sidebar. */
@@ -117,25 +125,30 @@
   /* "Financial Dashboard" from ui-ux-pro-max: the same slate family as the
      light theme, tuned the way the dark-mode rule asks — lighter, desaturated
      tonal variants rather than inverted colours, each pair measured on its own. */
-  --background: #020617;
-  --foreground: #f8fafc;
-  --card: #0e1223;
-  --card-foreground: #f8fafc;
-  --muted: #1a1e2f;
-  --muted-foreground: #94a3b8;
-  --border: #334155;
-  --input: #475569;
-  /* White on this blue is only 3.68:1, so the label is the near-black from the
-     palette instead — the same "On Accent" move the source palette makes. */
-  --primary: #3b82f6;
-  --primary-hover: #60a5fa;
-  --primary-foreground: #020617;
-  --accent: #172554;
-  --accent-foreground: #93c5fd;
-  --ring: #93c5fd;
+  /* 2026-10: green-black from the user's Schedule design (page #101918,
+     cards #161f1e), with the mockup's pale green as the action colour. */
+  --background: #101918;
+  --foreground: #e8efeb;
+  --card: #161f1e;
+  --card-foreground: #e8efeb;
+  --muted: #1f2a28;
+  --muted-foreground: #98a8a1;
+  --border: #2a3835;
+  --input: #3a4a46;
+  /* Dark ink on the pale green, 10.5:1 — the mockup's own pairing. */
+  --primary: #9bd49c;
+  --primary-hover: #b4e2b4;
+  --primary-foreground: #0b1a0e;
+  --accent: #2f4a37;
+  --accent-foreground: #d3ecd6;
+  --ring: #9bd49c;
+  --green-plate: #1c3626;
+  --green-line: #a1cba8;
+  --green-ink: #6fb574;
+  --week-plate: #14201e;
   --brand-blue: #9dbcf0;
   --brand-green: #a6c96c;
-  --brand-sky: #172033;
+  --brand-sky: #16211f;
   /* Dark theme gets dark plates. They used to stay light here, so a badge was
      a bright white pill glowing on a near-black page. */
   --tone-info-plate: #16233f;
@@ -156,7 +169,7 @@
   --tone-alt2-plate: #2d1524;
   --tone-alt2-line: #5c2445;
   --tone-alt2-ink: #f9a8d4;
-  --shadow-card: #00000059;
+  --shadow-card: #00000066;
 }
 
 @theme inline {
@@ -744,6 +757,9 @@ h2 {
 .panel-header {
   justify-content: space-between;
   padding: 16px 20px 16px;
+}
+.panel-header .button {
+  white-space: nowrap;
 }
 .panel-header p {
   margin-top: 4px;
@@ -1375,7 +1391,10 @@ td {
 .profile-hero h2 {
   font-size: 16px;
 }
-.profile-hero p,
+.profile-hero p {
+  margin-top: 2px;
+  color: var(--muted-foreground);
+}
 .panel-body {
   padding: 0 var(--space-5) var(--space-5);
 }
@@ -1486,6 +1505,30 @@ td {
 .legend-hint {
   margin-left: auto;
 }
+/* A phone has no shift key; it gets the tap-and-fill hint instead.
+   (`.legend span` sets display, hence the two-class selectors.) */
+.legend .legend-hint-touch {
+  display: none;
+}
+@media (hover: none) {
+  .legend .legend-hint-mouse {
+    display: none;
+  }
+  .legend .legend-hint-touch {
+    display: flex;
+  }
+}
+.selected-day-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+/* Notes under the actions keep the panel's inset, like the actions do. */
+.selected-day > .muted-copy {
+  margin-top: 0;
+  padding: 0 20px 16px;
+}
 .seg-small button {
   padding: 4px 8px;
   font-size: 11px;
@@ -1499,6 +1542,88 @@ td {
 .calendar-day.muted {
   color: var(--muted-foreground);
   opacity: var(--dim);
+}
+/* Saturday and Sunday: a quiet plate, so the week's shape reads at a glance. */
+.calendar-day.weekend {
+  background: color-mix(in srgb, var(--muted-foreground) 12%, var(--card));
+  color: var(--muted-foreground);
+}
+.calendar-day.weekend.picked {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+/* Time off fills the day instead of hanging a dot under the number. */
+.calendar-day.leave {
+  border-color: var(--tone-warn-line);
+  background: var(--tone-warn-plate);
+  color: var(--tone-warn-ink);
+  font-weight: 600;
+}
+/* Paid leave is the loudest thing in the month: a solid fill and its own
+   word, so it is never mistaken for an unpaid day off. White on the light
+   amber ink is 5.0:1; the dark theme's pale amber carries near-black ink. */
+.calendar-day.leave.paid {
+  border-color: var(--tone-warn-ink);
+  background: var(--tone-warn-ink);
+  color: var(--paid-ink, #ffffff);
+  font-weight: 700;
+}
+.theme-dark .calendar-day.leave.paid {
+  --paid-ink: #1c1400;
+}
+.calendar-day small {
+  position: absolute;
+  bottom: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+/* Picking keeps the day's own colour and draws a ring, so a picked holiday
+   still says it is a holiday. */
+.calendar-day.leave.picked {
+  box-shadow: inset 0 0 0 2px var(--accent-foreground);
+}
+.calendar-day.leave.picked:not(.paid) {
+  background: var(--tone-warn-plate);
+  color: var(--tone-warn-ink);
+}
+.calendar-day.leave.paid.picked {
+  background: var(--tone-warn-ink);
+  color: var(--paid-ink, #ffffff);
+  box-shadow: inset 0 0 0 2px var(--card), 0 0 0 2px var(--accent-foreground);
+}
+.legend .swatch {
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+.legend .swatch.leave {
+  border-color: var(--tone-warn-line);
+  background: var(--tone-warn-plate);
+}
+.legend .swatch.paid {
+  border-color: var(--tone-warn-ink);
+  background: var(--tone-warn-ink);
+}
+.legend .swatch.weekend {
+  background: color-mix(in srgb, var(--muted-foreground) 12%, var(--card));
+}
+/* A desktop cell is ~70px square; a 13px number in it read as an afterthought. */
+@media (min-width: 901px) {
+  .calendar-day span {
+    font-size: 18px;
+    font-weight: 600;
+  }
+  .calendar-weekdays {
+    font-size: var(--text-body);
+    font-weight: 600;
+  }
+  .calendar-day small {
+    bottom: 6px;
+    font-size: 10px;
+  }
 }
 .calendar-day.today {
   box-shadow: inset 0 0 0 1px var(--foreground);
@@ -1531,7 +1656,8 @@ td {
 }
 .legend {
   display: flex;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 8px 16px;
   padding: 16px 2px 2px;
   color: var(--muted-foreground);
   font-size: 11px;
@@ -1743,8 +1869,16 @@ fieldset label {
 .company-card {
   min-height: 160px;
 }
+/* Without an uploaded logo the initial sits on a plate, like the avatar
+   beside vacancy titles, instead of floating as a bare letter. */
 .company-logo {
   overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+.company-logo:has(img) {
+  background: var(--card);
 }
 .company-logo img {
   width: 100%;
@@ -2029,8 +2163,11 @@ fieldset label {
     width: 64px;
     flex-basis: 64px;
   }
+  /* Every item is an icon here, so the column can outgrow a short window. */
   .sidebar {
     padding-inline: 8px;
+    overflow-x: hidden;
+    overflow-y: auto;
   }
   .brand-row span,
   .workspace-switcher > div:nth-child(2),
@@ -2063,8 +2200,10 @@ fieldset label {
   .workspace-switcher {
     justify-content: center;
   }
-  .main-nav .nav-label,
-  .sidebar-bottom .nav-item {
+  /* The bottom items stay, as icons like the rest (`.nav-item` font-size 0
+     above): hiding them took sign-out, the password and the theme switch off
+     every screen between a phone and a full desktop. */
+  .main-nav .nav-label {
     display: none;
   }
   .nav-item {
@@ -2245,7 +2384,11 @@ fieldset label {
   .metric-caption {
     line-height: 1.3;
   }
+  /* A header's actions drop under its text when both do not fit, instead of
+     squeezing "Show on map" into a three-line column beside it. */
   .panel-header {
+    flex-wrap: wrap;
+    gap: 12px;
     padding-inline: 12px;
   }
   .vacancy-row,
@@ -2285,11 +2428,28 @@ fieldset label {
     margin-left: 0;
     padding: 4px 0;
   }
+  /* One company per line — logo, name, open — instead of a near-empty
+     screen-high card each. */
   .company-grid {
     grid-template-columns: 1fr;
+    gap: 0;
   }
   .company-card {
-    min-height: 178px;
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    min-height: 0;
+  }
+  .company-card + .company-card {
+    border-top: 1px solid var(--border);
+  }
+  .company-card .company-logo {
+    width: 40px;
+    height: 40px;
+  }
+  .company-card h2 {
+    margin-top: 0;
   }
   .card-detail-row {
     flex-wrap: wrap;
@@ -2357,6 +2517,34 @@ svg {
   gap: 8px;
   color: var(--muted-foreground);
   font-size: 11px;
+}
+/* The date reads like the vacancy select beside it. */
+.hours-panel .table-toolbar .date-field input[type='text'] {
+  height: 32px;
+  padding: 0 34px 0 8px;
+  border: 1px solid var(--input);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--foreground);
+  font-size: 12px;
+}
+/* On a phone the hours box — the one thing typed here — stays on screen:
+   names wrap and the cells tighten instead of pushing it off to the right. */
+@media (max-width: 640px) {
+  .hours-panel th,
+  .hours-panel td {
+    padding: 10px 8px;
+  }
+  .hours-panel th:first-child,
+  .hours-panel td:first-child {
+    padding-left: 12px;
+  }
+  .hours-panel .person-cell {
+    min-width: 0;
+  }
+  .hours-panel .hours-input {
+    width: 64px;
+  }
 }
 
 /* `.form-footer` (the "N of M typed by hand … Save hours" row) has no
@@ -3334,6 +3522,1344 @@ svg {
   border-color: var(--accent);
 }
 
+/* ------------------------------------------------------------------
+   Vacancy schedule, 2026-10 redesign (the user's own mockups): a header
+   card with the view switch and date navigation, and the month as a
+   calendar — one row per week, a day cell per day. On a phone each week
+   folds into an accordion row.
+   ------------------------------------------------------------------ */
+/* Everything the schedule puts in the vacancy's panel keeps the same inset
+   from the panel's edge as "Who normally works here" above it (20px). */
+.sched-save-note,
+.schedule-storage-note {
+  margin: 0 var(--sched-inset, var(--space-5));
+}
+.sched-layout,
+.month-cal {
+  margin: 0 var(--sched-inset, var(--space-5));
+}
+.sched-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-4) var(--sched-inset, var(--space-5));
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--card);
+}
+.sched-header-title {
+  flex: 1 1 150px;
+  min-width: 0;
+}
+.sched-header-title h2 {
+  margin: 0;
+  font-size: var(--text-h1);
+  font-weight: 700;
+}
+.sched-header-title p {
+  margin: var(--space-1) 0 0;
+  color: var(--muted-foreground);
+  font-size: var(--text-body);
+}
+.sched-header .seg {
+  gap: var(--space-1);
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.sched-header .seg button {
+  min-height: 36px;
+  padding: 0 var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  font-size: var(--text-body);
+}
+.sched-header .seg button.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+.sched-datenav .week-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-width: 150px;
+  min-height: 36px;
+  color: var(--foreground);
+  font-size: var(--text-lead);
+  font-weight: 600;
+}
+.sched-datenav .week-label svg {
+  display: none;
+  width: 16px;
+  height: 16px;
+  color: var(--muted-foreground);
+}
+.theme-dark .sched-datenav .week-label {
+  padding: 0 var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--background);
+}
+.theme-dark .sched-datenav .week-label svg {
+  display: block;
+}
+.sched-header .button {
+  min-height: 36px;
+  padding: 0 var(--space-4);
+  font-size: var(--text-body);
+}
+/* Outlined on the light page, the filled green action in the dark theme —
+   exactly as the two mockups draw it. */
+.sched-header .sched-share {
+  border-color: var(--border);
+  background: var(--card);
+  color: var(--foreground);
+}
+.sched-header .sched-share:hover {
+  background: var(--muted);
+}
+.theme-dark .sched-header .sched-share {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.theme-dark .sched-header .sched-share:hover {
+  border-color: var(--primary-hover);
+  background: var(--primary-hover);
+}
+.sched-today:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.month-cal {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--card);
+}
+.month-week {
+  display: grid;
+  grid-template-columns: 156px minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--card);
+}
+.month-week-label {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 0;
+  background: var(--week-plate);
+  color: var(--foreground);
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+.month-week-label > span {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.month-week-label strong {
+  font-size: var(--text-title);
+  font-weight: 700;
+}
+.month-week-label small {
+  color: var(--muted-foreground);
+  font-size: var(--text-small);
+}
+.month-week-label em {
+  color: var(--green-ink);
+  font-size: var(--text-body);
+  font-style: normal;
+  font-weight: 700;
+}
+.month-week-short {
+  display: block;
+  color: var(--tone-danger-ink);
+  font-size: var(--text-small);
+}
+.month-week-chevron {
+  display: none;
+  width: 18px;
+  height: 18px;
+  color: var(--muted-foreground);
+  transition: transform 0.15s ease;
+}
+/* The dark mockup outlines the current week; the light one marks only today. */
+.theme-dark .month-week.current .month-week-label {
+  background: var(--green-plate);
+  box-shadow: inset 0 0 0 2px var(--green-line);
+  border-radius: var(--r-lg);
+}
+.month-week-days {
+  display: grid;
+  grid-template-columns: repeat(var(--days, 7), minmax(0, 1fr));
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+.month-day {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  border-radius: var(--r-lg);
+}
+.month-day.today {
+  margin: calc(var(--space-2) * -1 + 2px);
+  padding: calc(var(--space-2) - 2px);
+  border: 2px solid var(--green-line);
+  background: var(--green-plate);
+}
+/* Weekday and the staffing badge on top, the full dd.mm.yyyy date under them,
+   so the date never has to be cut in a narrow cell. */
+.month-day-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px var(--space-1);
+  padding: var(--space-2) var(--space-2);
+  border-radius: var(--r-md);
+  background: var(--muted);
+}
+.month-day-head > span {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.month-day.today .month-day-head {
+  background: transparent;
+}
+.month-day-head strong {
+  font-size: var(--text-body);
+  font-weight: 700;
+}
+.month-day.today .month-day-head strong {
+  color: var(--green-ink);
+}
+.month-day-head span {
+  color: var(--muted-foreground);
+  font-size: var(--text-small);
+}
+.month-report,
+.month-add {
+  min-height: 56px;
+  border-radius: var(--r-md);
+}
+/* The photo button sits in the bottom-right corner, on the "Photos" line, so
+   the title keeps the cell's full width — as in the mockup. */
+.month-report {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--green-ink) 6%, var(--card));
+}
+.month-report-open {
+  display: flex;
+  flex: 1;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.month-report-open > svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--green-ink);
+  fill: color-mix(in srgb, var(--green-ink) 22%, transparent);
+}
+.month-report-open span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.month-report-open strong {
+  overflow: hidden;
+  font-size: var(--text-small);
+  font-weight: 700;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+}
+.month-report-open small {
+  padding-right: 26px;
+  color: var(--muted-foreground);
+  font-size: var(--text-label);
+  white-space: nowrap;
+}
+.month-report-open:hover strong {
+  text-decoration: underline;
+}
+.month-report-photo {
+  position: absolute;
+  right: var(--space-1);
+  bottom: var(--space-1);
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--foreground);
+  cursor: pointer;
+}
+.month-report-photo:hover {
+  background: var(--muted);
+}
+.month-report-photo svg {
+  width: 18px;
+  height: 18px;
+}
+.month-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
+  border: 1px dashed var(--input);
+  background: var(--card);
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: var(--text-small);
+  cursor: pointer;
+}
+.month-add svg {
+  width: 14px;
+  height: 14px;
+}
+.month-add:hover {
+  border-color: var(--green-line);
+  color: var(--foreground);
+}
+
+@media (max-width: 1100px) {
+  .month-week {
+    grid-template-columns: 120px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .full-panel {
+    --sched-inset: var(--space-3);
+  }
+  .sched-header {
+    padding: var(--space-4);
+  }
+  .sched-header-title {
+    flex-basis: 100%;
+  }
+  .sched-header .seg {
+    flex: 1 1 100%;
+  }
+  .sched-header .seg button {
+    flex: 1;
+  }
+  .sched-datenav {
+    flex: 1;
+    justify-content: space-between;
+  }
+  .sched-datenav .week-label {
+    min-width: 0;
+  }
+}
+
+/* The month as an accordion of weeks from tablet width down: seven columns
+   of 50px cannot show a dd.mm.yyyy date, let alone a slot. */
+@media (max-width: 900px) {
+  .month-cal {
+    padding: var(--space-2);
+    gap: var(--space-2);
+  }
+  .month-week {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .month-week-label {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+  }
+  .month-week-label > span {
+    flex: 1;
+  }
+  .month-week-chevron {
+    display: block;
+  }
+  .month-week.open .month-week-chevron {
+    transform: rotate(180deg);
+  }
+  .month-week:not(.open) .month-week-days {
+    display: none;
+  }
+  .month-week-days {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-1);
+    padding: var(--space-2);
+  }
+  .month-day {
+    display: grid;
+    grid-template-columns: 88px minmax(0, 1fr);
+    align-items: center;
+  }
+  .month-day-head {
+    flex-direction: column;
+    gap: 2px;
+    padding: 0;
+    background: transparent;
+  }
+  .month-day.today {
+    margin: 0;
+  }
+  .month-report,
+  .month-add {
+    min-height: 48px;
+  }
+}
+
+/* ---- Week: seven compact columns in one row -------------------------- */
+.view-week .sched-day {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--r-lg);
+}
+.view-week .sched-day.today {
+  border-width: 2px;
+  background: var(--green-plate);
+}
+.view-week .sched-day-head {
+  margin: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 0;
+  border-radius: var(--r-md);
+  background: var(--muted);
+}
+.view-week .sched-day.today .sched-day-head {
+  background: transparent;
+}
+.view-week .sched-day.today .sched-day-head strong {
+  color: var(--green-ink);
+}
+.view-week .sched-day-head .icon-button {
+  width: 26px;
+  height: 26px;
+}
+/* A week column is ~130px: "Wed 07.10.2026" alone fills it, and the
+   "2 short" badge was cut off at the edge. The weekday and the badge share
+   the first line, the date takes the second — the same two lines on every
+   day, so the slots below still line up across the week. */
+.view-week .sched-day-head > div:first-child {
+  display: grid;
+  flex: 1;
+  grid-template-columns: auto auto;
+  justify-content: space-between;
+  align-items: center;
+  gap: 2px var(--space-1);
+  min-width: 0;
+}
+.view-week .sched-day-head > div:first-child > strong {
+  grid-area: 1 / 1;
+  margin-right: 0;
+}
+.view-week .sched-day-head > div:first-child > em {
+  grid-area: 1 / 2;
+  margin-left: 0;
+}
+.view-week .sched-day-head > div:first-child > span {
+  grid-area: 2 / 1 / 3 / 3;
+}
+.view-week .sched-day-actions:empty {
+  display: none;
+}
+.view-week .sched-slot,
+.view-week .sched-slot:last-child {
+  margin: 0 var(--space-1) var(--space-1);
+  padding: var(--space-2) var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--card);
+}
+.view-week .sched-slot.open {
+  border-color: var(--green-line);
+  background: var(--card);
+  box-shadow: inset 0 0 0 1px var(--green-line);
+}
+.view-week .sched-slot-head {
+  gap: var(--space-1);
+}
+.view-week .sched-slot-head strong {
+  flex: 1 1 100%;
+  font-size: var(--text-small);
+  line-height: 1.3;
+}
+.view-week .sched-time {
+  flex: 1 1 100%;
+}
+.view-week .time-field {
+  width: 52px;
+  padding: 0 var(--space-1);
+}
+/* Count, filled badge and × on one line in a ~110px slot: a two-digit
+   field without the spinner arrows (which would cover the digits here) and a
+   smaller ×, kept at the right edge. */
+.view-week .sched-slot-head .headcount input {
+  width: 32px;
+  padding: 0 var(--space-1);
+  appearance: textfield;
+}
+.view-week .sched-slot-head .headcount input::-webkit-inner-spin-button,
+.view-week .sched-slot-head .headcount input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.view-week .sched-slot-head .planner-clear {
+  width: 20px;
+  height: 20px;
+  margin-left: auto;
+}
+.view-week .sched-slot-head .headcount small {
+  display: none;
+}
+.view-week .sched-names {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+}
+.view-week .sched-slot,
+.view-week .sched-names {
+  min-width: 0;
+}
+.view-week .name-chip {
+  position: relative;
+  align-items: flex-start;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border-radius: var(--r-sm);
+  font-size: var(--text-small);
+}
+/* Names wrap rather than truncate: a dispatcher has to read the whole name. */
+.view-week .name-chip a {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+/* ↑ ↓ ± × appear over the end of the name while the row is hovered or a
+   button in it has focus — a 130px column has no room to show them always.
+   Hidden by opacity, not display, so Tab still reaches them. */
+.view-week .chip-actions {
+  position: absolute;
+  top: 50%;
+  right: 2px;
+  gap: var(--space-1);
+  padding: 0 var(--space-1);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+.view-week .name-chip:hover .chip-actions,
+.view-week .name-chip:focus-within .chip-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+.view-week .sched-names .add-shift {
+  justify-content: center;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-label);
+}
+.view-week .sched-names .add-shift svg {
+  width: 12px;
+  height: 12px;
+}
+.sched-day-foot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: auto;
+  padding: 0 var(--space-1) var(--space-1);
+}
+/* An empty day keeps its "Add slot" up top, not at the foot of a tall column. */
+.sched-day-head + .sched-day-foot {
+  margin-top: 0;
+}
+.sched-day-foot .month-add {
+  min-height: 44px;
+}
+
+/* ---- Day: the wide editor ------------------------------------------- */
+.view-day .sched-day {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  align-items: start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--r-lg);
+}
+.view-day .sched-day > :not(.sched-slot) {
+  grid-column: 1 / -1;
+}
+.view-day .sched-day.today {
+  border-width: 2px;
+}
+.view-day .sched-day-head {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 0;
+  border-radius: var(--r-md);
+  background: var(--muted);
+}
+.view-day .sched-day.today .sched-day-head {
+  background: var(--green-plate);
+}
+.view-day .sched-day-head strong {
+  font-size: var(--text-title);
+}
+.view-day .sched-day.today .sched-day-head strong {
+  color: var(--green-ink);
+}
+.view-day .sched-day-head span {
+  font-size: var(--text-body);
+}
+.view-day .sched-slot,
+.view-day .sched-slot:last-child {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+.view-day .sched-slot.open {
+  border-color: var(--green-line);
+  background: var(--green-plate);
+}
+.view-day .sched-empty {
+  padding: var(--space-2) 0;
+}
+.view-day .workday-report {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+
+@media (max-width: 640px) {
+  /* Doubled class: the seven-column rule further down the file would win a tie. */
+  .sched-layout .sched-days.view-week {
+    grid-template-columns: minmax(0, 1fr);
+    overflow: visible;
+  }
+  /* No hover on a phone, and a full-width row has room for the buttons. */
+  .view-week .name-chip {
+    flex-wrap: nowrap;
+  }
+  .view-week .chip-actions {
+    position: static;
+    flex-basis: auto;
+    margin-left: auto;
+    padding: 0;
+    background: transparent;
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
+  }
+  .view-day .sched-day {
+    padding: var(--space-2);
+  }
+}
+/* A touch screen cannot hover, so the buttons stay visible — on a line of
+   their own under the name, which keeps the name readable in a 130px column. */
+@media (pointer: coarse) and (min-width: 641px) {
+  .view-week .name-chip {
+    flex-wrap: wrap;
+  }
+  .view-week .chip-actions {
+    position: static;
+    flex-basis: 100%;
+    justify-content: flex-end;
+    padding: 0;
+    background: transparent;
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
+  }
+}
+/* In the picker the actions go under the name: four buttons beside it left
+   the name and the distance a 100px sliver. */
+.sched-picker .candidate-row {
+  flex-wrap: wrap;
+}
+.sched-picker .candidate-row > span:not(.badge) {
+  flex: 1 1 160px;
+}
+.sched-picker .candidate-actions {
+  flex-wrap: wrap;
+}
+
+.metric-card.metric-alert {
+  border-color: var(--tone-danger-line);
+  background: var(--tone-danger-plate);
+}
+.metric-card.metric-alert .metric-value-row strong {
+  color: var(--tone-danger-ink);
+}
+
+/* ---- dd.mm.yyyy date field ------------------------------------------- */
+.date-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 140px;
+}
+.date-field input[type='text'] {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  padding-right: 34px;
+  font-variant-numeric: tabular-nums;
+}
+.date-field .date-field-pick {
+  position: absolute;
+  right: 4px;
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.date-field .date-field-pick:hover:not(:disabled) {
+  background: var(--muted);
+  color: var(--foreground);
+}
+.date-field .date-field-pick svg {
+  width: 15px;
+  height: 15px;
+}
+/* The browser's own input, kept only to open its calendar. */
+.date-field input.date-field-native {
+  position: absolute;
+  right: 4px;
+  bottom: 0;
+  width: 1px;
+  min-width: 0;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ---- In-page confirm (replaces window.confirm) ------------------------ */
+.confirm-backdrop {
+  z-index: 60;
+}
+.confirm-dialog {
+  width: min(420px, 100%);
+}
+.confirm-dialog p {
+  margin: 0;
+  font-size: var(--text-lead);
+  line-height: 1.5;
+}
+.button-danger {
+  border-color: var(--tone-danger-ink);
+  background: var(--tone-danger-ink);
+  color: var(--card);
+}
+.button-danger:hover {
+  filter: brightness(1.08);
+}
+
+/* ---- Warnings on a scheduled name ------------------------------------ */
+/* On leave after being put on the day: still listed so nobody is lost, but
+   struck through and not counted, because they will not be there. */
+.name-chip.on-leave {
+  border-color: var(--tone-warn-line);
+  background: var(--tone-warn-plate);
+}
+.name-chip.on-leave a {
+  text-decoration: line-through;
+}
+/* The same person on two shifts at once. */
+.name-chip.clash {
+  border-color: var(--tone-danger-line);
+  background: var(--tone-danger-plate);
+}
+.name-chip .chip-warning {
+  color: var(--tone-warn-ink);
+  font-size: var(--text-label);
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.name-chip.clash .chip-warning {
+  color: var(--tone-danger-ink);
+}
+.month-staff {
+  grid-column: 2;
+  grid-row: 1;
+  margin-left: auto;
+  padding: 0 var(--space-1);
+  border-radius: var(--r-sm);
+  font-size: var(--text-label);
+  font-style: normal;
+  font-weight: 700;
+}
+.month-staff.full {
+  background: var(--tone-ok-plate);
+  color: var(--tone-ok-ink);
+}
+.month-staff.short {
+  background: var(--tone-danger-plate);
+  color: var(--tone-danger-ink);
+}
+.month-staff.over {
+  background: var(--tone-warn-plate);
+  color: var(--tone-warn-ink);
+}
+
+/* A second shift that day which can be combined: worth seeing, not wrong. */
+.name-chip.also {
+  border-color: var(--tone-alt-line);
+}
+.name-chip .chip-also {
+  overflow: hidden;
+  color: var(--tone-alt-ink);
+  font-size: var(--text-label);
+  font-style: normal;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* A future day without its people. */
+.sched-day.short {
+  border-color: var(--tone-danger-line);
+  box-shadow: inset 0 3px 0 var(--tone-danger-ink);
+}
+.day-short {
+  margin-left: var(--space-2);
+  padding: 0 var(--space-1);
+  border-radius: var(--r-sm);
+  background: var(--tone-danger-plate);
+  color: var(--tone-danger-ink);
+  font-size: var(--text-label);
+  font-style: normal;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.month-day.short:not(.today) {
+  margin: -2px;
+  padding: 2px;
+  border-radius: var(--r-lg);
+  outline: 2px solid var(--tone-danger-line);
+  background: var(--tone-danger-plate);
+}
+.month-staff.past {
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+.dot.status-other,
+.pick-marker.status-other {
+  background: var(--tone-alt-ink);
+}
+/* Vacancy list: what needs people, and when it starts. */
+.vacancy-short-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+/* The row is a div with a stretched link, so the short-day links inside it
+   can be links of their own. */
+.vacancy-row {
+  position: relative;
+}
+.vacancy-row-link {
+  color: inherit;
+  text-decoration: none;
+}
+.vacancy-row-link::after {
+  position: absolute;
+  inset: 0;
+  content: '';
+}
+.vacancy-row-link:focus-visible {
+  outline: none;
+}
+.vacancy-row:has(.vacancy-row-link:focus-visible) {
+  box-shadow: inset 0 0 0 2px var(--ring);
+}
+.vacancy-short-days a {
+  position: relative;
+  z-index: 1;
+  padding: 1px var(--space-2);
+  border-radius: var(--r-pill);
+  background: var(--tone-danger-plate);
+  color: var(--tone-danger-ink);
+  font-size: var(--text-label);
+  font-weight: 700;
+  text-decoration: none;
+}
+.vacancy-short-days a:hover {
+  box-shadow: inset 0 0 0 1px var(--tone-danger-ink);
+}
+.vacancy-short-days em {
+  padding: 1px var(--space-2);
+  border-radius: var(--r-pill);
+  background: var(--tone-danger-plate);
+  color: var(--tone-danger-ink);
+  font-size: var(--text-label);
+  font-style: normal;
+  font-weight: 700;
+}
+.vacancy-row > small.vacancy-when {
+  min-width: 170px;
+  text-align: right;
+  white-space: nowrap;
+}
+.tab-alert {
+  display: inline-grid;
+  min-width: 18px;
+  height: 18px;
+  margin-left: var(--space-1);
+  padding: 0 var(--space-1);
+  place-items: center;
+  border-radius: var(--r-pill);
+  background: var(--tone-danger-ink);
+  color: var(--card);
+  font-size: var(--text-label);
+  font-style: normal;
+  font-weight: 700;
+}
+@media (max-width: 640px) {
+  .vacancy-row > small.vacancy-when {
+    min-width: 0;
+    text-align: left;
+  }
+}
+
+/* ---- People picker: map + list, several at once ------------------------ */
+.picker-sheet {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  width: min(1240px, 100%);
+  height: min(860px, calc(100vh - 2 * var(--space-5)));
+  overflow: hidden;
+  border-radius: var(--r-lg);
+  background: var(--card);
+  box-shadow: 0 24px 64px var(--shadow-card);
+  animation: iatw-lift var(--motion-base) var(--ease) both;
+}
+.dialog-backdrop.closing .picker-sheet {
+  animation: iatw-sink var(--motion-exit) var(--ease-in) both;
+}
+.picker-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+.picker-head > div {
+  flex: 1;
+  min-width: 0;
+}
+.picker-head h2 {
+  margin: 0;
+  font-size: var(--text-h2);
+}
+.picker-head p {
+  margin: var(--space-1) 0 0;
+  color: var(--muted-foreground);
+  font-size: var(--text-body);
+}
+.picker-count {
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--r-pill);
+  font-size: var(--text-small);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.picker-count.short {
+  background: var(--tone-danger-plate);
+  color: var(--tone-danger-ink);
+}
+.picker-count.full {
+  background: var(--tone-ok-plate);
+  color: var(--tone-ok-ink);
+}
+.picker-count.over {
+  background: var(--tone-warn-plate);
+  color: var(--tone-warn-ink);
+}
+.picker-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+.picker-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 180px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--input);
+  border-radius: var(--r-md);
+  background: var(--card);
+}
+.picker-search svg {
+  width: 14px;
+  height: 14px;
+  color: var(--muted-foreground);
+}
+.picker-search input {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  outline: none;
+}
+.picker-radius {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--muted-foreground);
+  font-size: var(--text-small);
+}
+.picker-radius select {
+  height: 30px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--input);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  color: var(--foreground);
+}
+.picker-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(360px, 1fr);
+  min-height: 0;
+}
+.picker-map-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--border);
+}
+.picker-map {
+  flex: 1;
+  min-height: 260px;
+  background: var(--muted);
+}
+.picker-map-empty {
+  display: grid;
+  margin: 0;
+  padding: var(--space-6);
+  place-items: center;
+  color: var(--muted-foreground);
+  text-align: center;
+}
+.picker-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  padding: var(--space-2) var(--space-4);
+  border-top: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-size: var(--text-label);
+}
+.picker-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.picker-legend-note {
+  margin-left: auto;
+}
+.dot {
+  display: inline-block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted-foreground);
+}
+.dot.status-free {
+  background: var(--status-free);
+}
+.dot.status-busy {
+  background: var(--status-working);
+}
+.dot.status-leave {
+  background: var(--status-leave);
+}
+.dot.status-blocked {
+  background: var(--muted-foreground);
+}
+.picker-list {
+  min-height: 0;
+  overflow: auto;
+}
+.picker-empty {
+  margin: 0;
+  padding: var(--space-6) var(--space-5);
+  color: var(--muted-foreground);
+}
+.picker-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 62px auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+.picker-row.highlighted {
+  background: var(--muted);
+}
+.picker-row.selected {
+  background: var(--green-plate);
+  box-shadow: inset 3px 0 var(--green-ink);
+}
+.picker-row:not(.status-free):not(.selected) .picker-name strong {
+  color: var(--muted-foreground);
+}
+.picker-row.declined {
+  opacity: var(--dim);
+}
+.picker-pick {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  cursor: pointer;
+}
+.picker-pick input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--green-ink);
+  cursor: pointer;
+}
+.picker-pick input:disabled {
+  cursor: not-allowed;
+}
+.picker-name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.picker-name strong {
+  font-size: var(--text-body);
+}
+.picker-name small {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  color: var(--muted-foreground);
+  font-size: var(--text-label);
+}
+.picker-transport {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--foreground);
+}
+.picker-transport svg {
+  width: 18px;
+  height: 18px;
+}
+.picker-transport small {
+  color: var(--muted-foreground);
+  font-size: var(--text-label);
+}
+.picker-distance {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-variant-numeric: tabular-nums;
+}
+.picker-distance strong {
+  font-size: var(--text-body);
+}
+.picker-distance small {
+  color: var(--muted-foreground);
+  font-size: var(--text-label);
+}
+.picker-row-actions {
+  display: inline-flex;
+  gap: 2px;
+}
+.picker-row-actions .icon-button {
+  width: 28px;
+  height: 28px;
+}
+.picker-row-actions svg {
+  width: 15px;
+  height: 15px;
+}
+.picker-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--border);
+}
+.picker-summary {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+.picker-summary span {
+  color: var(--muted-foreground);
+  font-size: var(--text-small);
+}
+.picker-over {
+  color: var(--tone-warn-ink);
+  font-style: normal;
+  font-weight: 700;
+}
+/* Map markers: colour = the person's day, glyph = how they travel. */
+.pick-marker {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 2px solid var(--card);
+  border-radius: 50%;
+  background: var(--muted-foreground);
+  box-shadow: 0 2px 6px #0005;
+  color: #fff;
+  cursor: pointer;
+  transition: transform var(--motion-fast) var(--ease), box-shadow var(--motion-fast) var(--ease);
+}
+.pick-marker svg {
+  width: 16px;
+  height: 16px;
+}
+.pick-marker b {
+  font-size: 14px;
+  line-height: 1;
+}
+.pick-marker-plus {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--card);
+  border-radius: 50%;
+  background: var(--brand-green);
+}
+.pick-marker.status-free {
+  background: var(--status-free);
+}
+.pick-marker.status-busy {
+  background: var(--status-working);
+}
+.pick-marker.status-leave {
+  background: var(--status-leave);
+}
+.pick-marker.status-blocked {
+  opacity: var(--dim);
+}
+.pick-marker.unselectable {
+  cursor: default;
+}
+.pick-marker.selected {
+  box-shadow: 0 0 0 3px var(--card), 0 0 0 6px var(--green-ink), 0 2px 8px #0006;
+  transform: scale(1.15);
+}
+.pick-marker.highlighted {
+  box-shadow: 0 0 0 3px var(--card), 0 0 0 6px var(--foreground);
+  transform: scale(1.2);
+}
+.theme-dark .pick-marker {
+  color: #0b1a0e;
+}
+
+@media (max-width: 900px) {
+  .picker-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 38vh minmax(0, 1fr);
+  }
+  .picker-map-wrap {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .picker-legend-note {
+    margin-left: 0;
+  }
+}
+@media (max-width: 640px) {
+  .dialog-backdrop:has(.picker-sheet) {
+    padding: 0;
+  }
+  .picker-sheet {
+    width: 100%;
+    height: 100dvh;
+    border-radius: 0;
+  }
+  .picker-head,
+  .picker-filters,
+  .picker-foot {
+    padding-inline: var(--space-3);
+  }
+  .picker-row {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    padding-inline: var(--space-3);
+  }
+  .picker-row-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+  .picker-foot {
+    flex-wrap: wrap;
+  }
+  .picker-summary {
+    flex-basis: 100%;
+  }
+}
+
 /* Attribution stays — the tile licences require it — but it should not shout. */
 .leaflet-control-attribution {
   background: color-mix(in srgb, var(--card) 88%, transparent);
@@ -3533,10 +5059,10 @@ svg {
 }
 .sched-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
-  padding: 16px 20px 20px;
 }
+
 .sched-layout:has(.sched-picker) {
   align-items: start;
 }
@@ -3555,7 +5081,7 @@ svg {
   padding: 0;
 }
 .sched-day.today {
-  border-color: var(--accent-foreground);
+  border-color: var(--green-line);
 }
 .sched-day-head {
   display: flex;
@@ -3822,6 +5348,11 @@ svg {
 .name-chip button:hover {
   color: var(--foreground);
 }
+.chip-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
 
 .sched-picker {
   position: sticky;
@@ -3937,15 +5468,12 @@ svg {
    There is no layout that fits a hundred names into a phone preview, so
    the honest answer is: wrap, never shrink.
    ============================================================ */
-.sched-days.view-week,
-.sched-days.view-month {
+.sched-days.view-week {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-  align-items: start;
-  gap: 12px;
-}
-.sched-days.view-day {
-  max-width: 640px;
+  grid-template-columns: repeat(7, minmax(128px, 1fr));
+  align-items: stretch;
+  gap: var(--space-2);
+  overflow-x: auto;
 }
 /* A day is the screenshot format: bigger names, generous line height. */
 .view-day .name-chip {
@@ -4359,13 +5887,27 @@ body,
   grid-template-columns: minmax(0, 420px);
 }
 .share-grid.share-row {
+  /* Only implicit columns: an inherited auto-fit template added empty tracks
+     beside them (five columns for four days). */
+  grid-template-columns: none;
   grid-auto-flow: column;
   grid-auto-columns: minmax(152px, 232px);
 }
-.share-grid.share-wrap {
+/* A month wraps, so its sheet needs a real width to wrap in. Sized from its
+   content it fell back to the footnote's width — three columns and a scroll
+   bar on a 1280px screen with room for seven. */
+.share-sheet:has(.share-wrap) {
   width: min(1180px, 100%);
+}
+.share-grid.share-wrap {
   grid-auto-flow: row;
-  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+}
+/* The footnote follows the sheet's width instead of setting it: a long line
+   of small print was what stretched a one-day sheet to 630px around a 420px list. */
+.share-foot {
+  width: 0;
+  min-width: 100%;
 }
 
 /* "Who normally works here" — the panel had no rules at all, so its rows sat
@@ -4625,12 +6167,12 @@ body,
   .panel-footer-link,
   .match-row,
   .day-action,
+  .selected-day > .muted-copy,
   .sync-result,
   .slot,
   .sched-toolbar,
   .sched-layout,
   .vacancy-editor,
-  .requirement-editor-row,
   .standing-head,
   .standing-row,
   .standing-panel .sched-empty {

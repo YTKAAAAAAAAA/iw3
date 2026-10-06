@@ -8,6 +8,7 @@ import { formatDate, joinDetails } from '@/lib/types'
 import { ArrowUpRight, Plus, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useRef, useState } from 'react'
+import { useConfirm } from '@/components/confirm-dialog'
 
 const errorOf = (result: unknown, fallback: string) =>
   typeof result === 'object' && result !== null && 'error' in result && typeof result.error === 'string'
@@ -38,6 +39,7 @@ export function CompaniesView() {
   const [saving, setSaving] = useState(false)
   const [restoring, setRestoring] = useState<string | null>(null)
   const [logoSaving, setLogoSaving] = useState(false)
+  const { confirm, confirmElement } = useConfirm()
   const logoInput = useRef<HTMLInputElement | null>(null)
   const [restoreError, setRestoreError] = useState('')
   const peopleWithAccess = (companyId: string) =>
@@ -155,12 +157,13 @@ export function CompaniesView() {
     const company = editing
     const openVacancies = vacancies.filter(v => v.companyId === company.id && !v.archivedAt).length
     if (
-      !window.confirm(
+      !(await confirm(
         t(
           'Archive {name}? {people} people lose access and {vacancies} open vacancies are archived. Shifts and hours stay in history, and the company can be restored.',
           { name: company.name, people: peopleWithAccess(company.id), vacancies: openVacancies },
         ),
-      )
+        { confirmLabel: 'Archive company' },
+      ))
     )
       return
     setSaving(true)
@@ -258,7 +261,11 @@ export function CompaniesView() {
                 <div>
                   <h2>{c.name}</h2>
                   <p>{joinDetails(c.contactPerson, c.phone)}</p>
-                  <strong>{t('{count} people with access', { count: peopleWithAccess(c.id) })}</strong>
+                  <strong>
+                    {peopleWithAccess(c.id) === 1
+                      ? t('1 person with access')
+                      : t('{count} people with access', { count: peopleWithAccess(c.id) })}
+                  </strong>
                 </div>
                 <button className="icon-button" aria-label={`Edit ${c.name}`} onClick={() => open(c)}>
                   <ArrowUpRight />
@@ -390,6 +397,7 @@ export function CompaniesView() {
             </div>
           </div>
         )}
+        {confirmElement}
       </div>
     </AppShell>
   )

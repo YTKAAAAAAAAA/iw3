@@ -3,17 +3,28 @@ import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth/guard'
 import { withDb } from '@/lib/db'
 import { withTransactionRetry } from '@/lib/db/retry'
+import { oneByOne } from '@/lib/db/one-by-one'
 import { parseScheduleSave } from '@/lib/schedule-persistence'
+import { sameDayClash } from '@/lib/derive'
 
+/* `code` tells the page what to do next: `stale` means fetch the schedule
+   again and replay its own changes; anything else means the change itself was
+   refused and is undone on the page. */
 class ScheduleRequestError extends Error {
-  constructor(readonly status: number, message: string) {
+  constructor(
+    readonly status: number,
+    message: string,
+    readonly code = 'rejected',
+    readonly params?: Record<string, string>,
+  ) {
     super(message)
   }
 }
 
 type RouteContext = { params: Promise<{ slug: string }> }
 
-const jsonError = (status: number, error: string) => NextResponse.json({ error }, { status })
+const jsonError = (status: number, error: string, code?: string, params?: Record<string, string>) =>
+  NextResponse.json(code ? { error, code, ...(params ? { params } : {}) } : { error }, { status })
 
 function isPgError(error: unknown, code: string): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === code
@@ -34,12 +45,12 @@ export async function GET(_request: Request, { params }: RouteContext) {
       const vacancy = await db.query<{ id: number }>('SELECT id FROM vacancy WHERE slug = $1', [slug])
       if (!vacancy.rows[0]) return null
       const vacancyId = vacancy.rows[0].id
-      const [state, demand, shifts] = await Promise.all([
-        db.query<{ revision: number; standing: unknown; offers: unknown }>(
+      const [state, demand, shifts] = await oneByOne(
+        () => db.query<{ revision: number; standing: unknown; offers: unknown }>(
           'SELECT revision, standing, offers FROM vacancy_schedule_state WHERE vacancy_id = $1',
           [vacancyId],
         ),
-        db.query<{
+        () => db.query<{
           id: number; date: string; site_slug: string | null; section: string | null
           headcount: number; start_time: string | null; end_time: string | null; note: string | null
         }>(`
@@ -50,7 +61,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
           WHERE vacancy_id = $1
           ORDER BY date, site_slug NULLS FIRST, section NULLS FIRST, id
         `, [vacancyId]),
-        db.query<{
+        () => db.query<{
           id: number; date: string; site_slug: string; section: string | null
           worker_id: number | null; is_extra: boolean; scheduled_start: string | null
           scheduled_end: string | null; note: string | null
@@ -62,7 +73,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
           WHERE vacancy_id = $1 AND confirmation_status IS DISTINCT FROM 'cancelled'
           ORDER BY date, site_slug, section NULLS FIRST, schedule_position, id
         `, [vacancyId]),
-      ])
+      )
       const demandSlots = demand.rows.map(row => ({
         id: String(row.id), vacancyId: slug, date: row.date, placeId: row.site_slug,
         section: row.section, headcount: row.headcount, start: row.start_time,
@@ -132,6 +143,9 @@ export async function PUT(request: Request, { params }: RouteContext) {
   const input = parseScheduleSave(body, slug)
   if (!input) return jsonError(400, 'Invalid schedule snapshot.')
 
+  /* The page sends only what it changed (lib/schedule-sync.ts). Rows it did
+     not send are not touched — that is what keeps a change made elsewhere,
+     the hourly Warehouse sync included, from being written back over. */
   try {
     const result = await withTransactionRetry(() => withDb(async db => {
       await db.query('BEGIN ISOLATION LEVEL SERIALIZABLE')
@@ -142,13 +156,18 @@ export async function PUT(request: Request, { params }: RouteContext) {
         )
         if (!vacancy.rows[0]) throw new ScheduleRequestError(404, 'Vacancy not found.')
         const vacancyId = vacancy.rows[0].id
+        /* Vacancies created after migration 011 never got this row, so their
+           schedule could not be saved at all. Created on first save now. */
+        await db.query(
+          'INSERT INTO vacancy_schedule_state (vacancy_id) VALUES ($1) ON CONFLICT (vacancy_id) DO NOTHING',
+          [vacancyId],
+        )
         const state = await db.query<{ revision: number; standing: unknown; offers: unknown }>(
           'SELECT revision, standing, offers FROM vacancy_schedule_state WHERE vacancy_id = $1 FOR UPDATE',
           [vacancyId],
         )
-        if (!state.rows[0]) throw new ScheduleRequestError(503, 'Schedule persistence is not initialized.')
         if (state.rows[0].revision !== input.revision) {
-          throw new ScheduleRequestError(409, 'This schedule changed since it was loaded. Reload before saving.')
+          throw new ScheduleRequestError(409, 'The schedule changed elsewhere. Loading the latest version…', 'stale')
         }
 
         const isStoredId = (id: string) => /^[1-9]\d{0,14}$/.test(id) && Number.isSafeInteger(Number(id))
@@ -158,13 +177,13 @@ export async function PUT(request: Request, { params }: RouteContext) {
         const deleteDemandIds = input.deleteDemandIds.map(Number)
         const deleteRosterIds = input.deleteRosterIds.map(Number)
 
-        const [ownedDemand, ownedRoster] = await Promise.all([
-          db.query<{ id: number }>(`
+        const [ownedDemand, ownedRoster] = await oneByOne(
+          () => db.query<{ id: number }>(`
             SELECT id FROM vacancy_demand
             WHERE vacancy_id = $1 AND id = ANY($2::int[])
             FOR UPDATE
           `, [vacancyId, [...demandIds, ...deleteDemandIds]]),
-          db.query<{
+          () => db.query<{
             id: number; date: string; site_slug: string; section: string | null; worker_id: number | null
             actual_start: string | null; actual_end: string | null; attendance_status: string | null
             is_extra: boolean; note: string | null; scheduled_start: string | null; scheduled_end: string | null
@@ -182,18 +201,21 @@ export async function PUT(request: Request, { params }: RouteContext) {
               WHERE sh.vacancy_id = $1 AND sh.id = ANY($2::int[])
               FOR UPDATE OF sh
           `, [vacancyId, [...rosterIds, ...deleteRosterIds]]),
-        ])
+        )
         if (ownedDemand.rows.length !== new Set([...demandIds, ...deleteDemandIds]).size) {
-          throw new ScheduleRequestError(409, 'A demand row no longer belongs to this vacancy.')
+          throw new ScheduleRequestError(409, 'The schedule changed elsewhere. Loading the latest version…', 'stale')
         }
         if (ownedRoster.rows.length !== new Set([...rosterIds, ...deleteRosterIds]).size) {
-          throw new ScheduleRequestError(409, 'A shift no longer belongs to this vacancy.')
+          throw new ScheduleRequestError(409, 'The schedule changed elsewhere. Loading the latest version…', 'stale')
         }
+
+        const standing = input.standing ?? (Array.isArray(state.rows[0].standing) ? state.rows[0].standing : [])
+        const offers = input.offers ?? (Array.isArray(state.rows[0].offers) ? state.rows[0].offers : [])
 
         const referencedSites = new Set<string>()
         for (const row of input.demand) if (row.placeId) referencedSites.add(row.placeId)
         for (const row of input.roster) referencedSites.add(row.placeId)
-        for (const row of input.standing) if (row.placeId) referencedSites.add(row.placeId)
+        for (const row of input.standing ?? []) if (row.placeId) referencedSites.add(row.placeId)
         if (referencedSites.size) {
           const sites = await db.query<{ site_slug: string }>(
             'SELECT site_slug FROM vacancy_site WHERE vacancy_id = $1 AND site_slug = ANY($2::text[])',
@@ -208,6 +230,9 @@ export async function PUT(request: Request, { params }: RouteContext) {
         const sourceRowsChangedByHand = new Set<number>()
         const workerIds = new Set<string>()
         const workersNeedingAccess = new Set<string>()
+        /* Rows whose person, day or hours change are the ones to check for a
+           clash; reordering a slot must not trip over an old double booking. */
+        const clashCandidates: typeof input.roster = []
         for (const row of input.roster) {
           if (!row.workerId) continue
           workerIds.add(row.workerId)
@@ -226,8 +251,12 @@ export async function PUT(request: Request, { params }: RouteContext) {
             || current.site_slug !== row.placeId || (current.section ?? null) !== row.section) {
             workersNeedingAccess.add(row.workerId)
           }
+          if (!current || current.worker_id !== Number(row.workerId) || current.date !== row.date
+            || current.scheduled_start !== row.start || current.scheduled_end !== row.end) {
+            clashCandidates.push(row)
+          }
         }
-        for (const row of input.standing) {
+        for (const row of input.standing ?? []) {
           workerIds.add(row.workerId)
           const previous = Array.isArray(state.rows[0].standing)
             ? state.rows[0].standing.find(item => hasSameFields(item, row, ['id']))
@@ -237,7 +266,7 @@ export async function PUT(request: Request, { params }: RouteContext) {
             'start', 'end', 'from', 'to', 'note',
           ])) workersNeedingAccess.add(row.workerId)
         }
-        for (const offer of input.offers) {
+        for (const offer of input.offers ?? []) {
           workerIds.add(offer.workerId)
           const previous = Array.isArray(state.rows[0].offers)
             ? state.rows[0].offers.find(item => hasSameFields(item, offer, ['id']))
@@ -270,6 +299,48 @@ export async function PUT(request: Request, { params }: RouteContext) {
           }
         }
 
+        /* Nobody works two shifts that cannot both be done: starting within
+           an hour of each other, or with a known end less than an hour before
+           the next start (lib/derive.ts sameDayClash — the page applies the
+           same rule). Two tabs or two dispatchers doing it at once end here. */
+        if (clashCandidates.length) {
+          const replaced = [...rosterIds, ...deleteRosterIds]
+          const others = await db.query<{
+            id: number; worker_id: number; date: string; start_at: string | null; end_at: string | null
+            title: string; full_name: string
+          }>(`
+            SELECT sh.id, sh.worker_id, sh.date::text AS date,
+              to_char(sh.scheduled_start, 'HH24:MI') AS start_at, to_char(sh.scheduled_end, 'HH24:MI') AS end_at,
+              v.title, w.full_name
+            FROM shift sh
+            JOIN vacancy v ON v.id = sh.vacancy_id
+            JOIN worker w ON w.id = sh.worker_id
+            WHERE sh.worker_id = ANY($1::int[])
+              AND sh.date = ANY($2::date[])
+              AND sh.confirmation_status IS DISTINCT FROM 'cancelled'
+              AND NOT (sh.id = ANY($3::int[]))
+          `, [
+            [...new Set(clashCandidates.map(row => Number(row.workerId)))],
+            [...new Set(clashCandidates.map(row => row.date))],
+            replaced,
+          ])
+          for (const row of clashCandidates) {
+            const clash = others.rows.find(other => String(other.worker_id) === row.workerId
+              && other.date === row.date && sameDayClash({ start: other.start_at, end: other.end_at }, row) === 'blocked')
+            if (clash) {
+              const time = clash.start_at ? ` ${clash.start_at}–${clash.end_at ?? ''}` : ''
+              throw new ScheduleRequestError(409,
+                `${clash.full_name} is already on ${clash.title}${time} on ${row.date}.`,
+                'double_booking', { name: clash.full_name, job: clash.title, time, date: row.date })
+            }
+            const twin = input.roster.find(other => other !== row && other.workerId === row.workerId
+              && other.date === row.date && sameDayClash(other, row) === 'blocked')
+            if (twin) {
+              throw new ScheduleRequestError(409, 'The same person is on two overlapping shifts in this change.', 'double_booking')
+            }
+          }
+        }
+
         const unassignWithOffers = new Set<number>()
         for (const row of input.roster) {
           if (!isStoredId(row.id)) continue
@@ -298,13 +369,6 @@ export async function PUT(request: Request, { params }: RouteContext) {
             || ['present', 'late', 'left_early', 'no_show', 'worked'].includes(row.attendance_status ?? ''))) {
             throw new ScheduleRequestError(409, 'A shift with attendance or actual-time records cannot be removed.')
           }
-        }
-
-        const slotKeys = new Set<string>()
-        for (const row of input.demand) {
-          const key = [row.date, row.placeId ?? '', row.section ?? ''].join('\u0000')
-          if (slotKeys.has(key)) throw new ScheduleRequestError(400, 'A demand slot may appear only once per date and site.')
-          slotKeys.add(key)
         }
 
         const cancelled: number[] = []
@@ -340,6 +404,8 @@ export async function PUT(request: Request, { params }: RouteContext) {
           await db.query('DELETE FROM vacancy_demand WHERE vacancy_id = $1 AND id = ANY($2::int[])', [vacancyId, deleteDemandIds])
         }
 
+        /* Rows being rewritten step aside first, so swapping two slots or two
+           people in one change cannot trip the unique indexes halfway. */
         const updatedDemandIds = demandIds.filter(id => !deleteDemandIds.includes(id))
         if (updatedDemandIds.length) {
           const nonce = randomUUID()
@@ -384,13 +450,22 @@ export async function PUT(request: Request, { params }: RouteContext) {
           }
         }
 
-        const positions = new Map<string, number>()
+        /* A row without a position goes to the end of its slot. */
         const nextPosition = new Map<string, number>()
-        for (const row of input.roster) {
+        const positionFor = async (row: (typeof input.roster)[number]) => {
+          if (row.position !== undefined) return row.position
           const key = [row.date, row.placeId, row.section ?? ''].join('\u0000')
-          const position = nextPosition.get(key) ?? 0
-          positions.set(row.id, position)
+          if (!nextPosition.has(key)) {
+            const { rows } = await db.query<{ next: number }>(`
+              SELECT COALESCE(max(schedule_position) + 1, 0)::int AS next FROM shift
+              WHERE vacancy_id = $1 AND date = $2::date AND site_slug = $3
+                AND COALESCE(section, '') = COALESCE($4, '')
+            `, [vacancyId, row.date, row.placeId, row.section])
+            nextPosition.set(key, rows[0].next)
+          }
+          const position = nextPosition.get(key)!
           nextPosition.set(key, position + 1)
+          return position
         }
 
         for (const row of input.roster) {
@@ -413,7 +488,7 @@ export async function PUT(request: Request, { params }: RouteContext) {
                 supabase_sync_locked = supabase_sync_locked OR $12
               WHERE vacancy_id = $1 AND id = $2
             `, [
-              vacancyId, Number(row.id), ...values, positions.get(row.id),
+              vacancyId, Number(row.id), ...values, await positionFor(row),
               sourceRowsChangedByHand.has(Number(row.id)),
             ])
             mappings.roster[row.id] = row.id
@@ -423,7 +498,7 @@ export async function PUT(request: Request, { params }: RouteContext) {
                 (vacancy_id, date, site_slug, section, worker_id, is_extra, note, hours, scheduled_start, scheduled_end, schedule_position)
               VALUES ($1, $2::date, $3, $4, $5, $6, $7, 0, $8::time, $9::time, $10)
               RETURNING id
-            `, [vacancyId, ...values, positions.get(row.id)])
+            `, [vacancyId, ...values, await positionFor(row)])
             mappings.roster[row.id] = String(created.rows[0].id)
           }
         }
@@ -434,14 +509,16 @@ export async function PUT(request: Request, { params }: RouteContext) {
           SET revision = $2, standing = $3::jsonb, offers = $4::jsonb,
             updated_at = now(), updated_by = $5
           WHERE vacancy_id = $1
-        `, [vacancyId, revision, JSON.stringify(input.standing), JSON.stringify(input.offers), session.userId])
+        `, [vacancyId, revision, JSON.stringify(standing), JSON.stringify(offers), session.userId])
         await db.query(`
           INSERT INTO vacancy_change (vacancy_id, actor_user_id, event_type, details)
           VALUES ($1, $2, 'schedule_saved', $3::jsonb)
         `, [vacancyId, session.userId, JSON.stringify({
           revision, removed: removedSnapshots, cancelledShiftIds: cancelled,
-          demandCount: input.demand.length, rosterCount: input.roster.length,
-          standing: input.standing, offers: input.offers,
+          demandChanged: input.demand.length, rosterChanged: input.roster.length,
+          demandDeleted: deleteDemandIds.length, rosterDeleted: deleteRosterIds.length,
+          ...(input.standing ? { standing: input.standing } : {}),
+          ...(input.offers ? { offers: input.offers } : {}),
         })])
 
         await db.query('COMMIT')
@@ -453,10 +530,10 @@ export async function PUT(request: Request, { params }: RouteContext) {
     }))
     return NextResponse.json(result)
   } catch (error) {
-    if (error instanceof ScheduleRequestError) return jsonError(error.status, error.message)
-    if (isPgError(error, '40001')) return jsonError(409, 'This schedule changed concurrently. Reload before saving.')
-    if (isPgError(error, '23505')) return jsonError(409, 'The requested schedule conflicts with an existing shift or demand slot.')
-    if (isPgError(error, '23503')) return jsonError(400, 'A selected site, worker, or referenced record is invalid.')
+    if (error instanceof ScheduleRequestError) return jsonError(error.status, error.message, error.code, error.params)
+    if (isPgError(error, '40001')) return jsonError(409, 'The schedule changed elsewhere. Loading the latest version…', 'stale')
+    if (isPgError(error, '23505')) return jsonError(409, 'There is already a slot or shift like this on that day.', 'rejected')
+    if (isPgError(error, '23503')) return jsonError(400, 'A selected site, worker, or referenced record is invalid.', 'rejected')
     console.error('Failed to save vacancy schedule.', error)
     return jsonError(500, 'Could not save the schedule. Please try again.')
   }

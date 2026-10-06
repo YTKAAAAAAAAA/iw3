@@ -20,3 +20,16 @@ test('timestamps are shown in Amsterdam time on a 24-hour clock', () => {
   assert.equal(formatDateTime('2026-12-01T13:05:00.000Z'), '01.12.2026 14:05')
   assert.equal(formatTimeOfDay('2026-12-01T13:05:00.000Z'), '14:05')
 })
+
+test('typed dates are read day first in every common form', async () => {
+  const { parseDate } = await import('./types.ts')
+  assert.equal(parseDate('05.10.2026'), '2026-10-05')
+  assert.equal(parseDate('5.10.2026'), '2026-10-05')
+  assert.equal(parseDate('05-10-2026'), '2026-10-05')
+  assert.equal(parseDate('05/10/26'), '2026-10-05')
+  assert.equal(parseDate('05102026'), '2026-10-05')
+  assert.equal(parseDate('2026-10-05'), '2026-10-05')
+  assert.equal(parseDate('31.02.2026'), null)
+  assert.equal(parseDate('10/6'), null)
+  assert.equal(parseDate(''), null)
+})

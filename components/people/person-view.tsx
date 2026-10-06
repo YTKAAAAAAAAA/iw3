@@ -22,7 +22,7 @@ export function PersonView({ id }: { id: string }) {
   const [accessError, setAccessError] = useState('')
   const [profileSaving, setProfileSaving] = useState(false)
   const saveProfile = async (
-    update: Partial<Pick<Worker, 'hasCar' | 'hasVog' | 'courseDays'> & Pick<PersonalDetails, 'notes'>>,
+    update: Partial<Pick<Worker, 'hasCar' | 'hasBike' | 'hasVog' | 'courseDays'> & Pick<PersonalDetails, 'notes'>>,
   ) => {
     setProfileSaving(true)
     setAccessError('')
@@ -92,6 +92,7 @@ export function PersonView({ id }: { id: string }) {
   /* Own transport is a switch, not a printed fact: cars are sold and bought,
    and a stale "no car" quietly keeps somebody out of every car-only site. */
   const [hasCar, setHasCar] = useState(w.hasCar)
+  const [hasBike, setHasBike] = useState(w.hasBike)
   /* Certificate of conduct. Some clients refuse anybody without one, and it is
    renewed rather than granted once — so it is a switch on the profile, not a
    line of printed text. */
@@ -202,26 +203,49 @@ export function PersonView({ id }: { id: string }) {
                   ],
                   [
                     'Own transport',
-                    <div className="seg seg-small" key="car">
-                      {(
-                        [
-                          [true, 'Car'],
-                          [false, 'No car'],
-                        ] as const
-                      ).map(([value, label]) => (
-                        <button
-                          type="button"
-                          key={label}
-                          className={hasCar === value ? 'active' : ''}
-                          disabled={w.status === 'dismissed' || profileSaving}
-                          onClick={() => {
-                            setHasCar(value)
-                            void saveProfile({ hasCar: value })
-                          }}
-                        >
-                          {t(label)}
-                        </button>
-                      ))}
+                    /* Car and bike are independent — somebody can have both — so
+                       each toggles on its own; None says "neither", which is a
+                       known answer and not the same as never having asked. */
+                    <div className="seg seg-small" key="transport">
+                      <button
+                        type="button"
+                        aria-pressed={hasCar === true}
+                        className={hasCar === true ? 'active' : ''}
+                        disabled={w.status === 'dismissed' || profileSaving}
+                        onClick={() => {
+                          const next = hasCar !== true
+                          setHasCar(next)
+                          void saveProfile({ hasCar: next })
+                        }}
+                      >
+                        {t('Car')}
+                      </button>
+                      <button
+                        type="button"
+                        aria-pressed={hasBike === true}
+                        className={hasBike === true ? 'active' : ''}
+                        disabled={w.status === 'dismissed' || profileSaving}
+                        onClick={() => {
+                          const next = hasBike !== true
+                          setHasBike(next)
+                          void saveProfile({ hasBike: next })
+                        }}
+                      >
+                        {t('Bike')}
+                      </button>
+                      <button
+                        type="button"
+                        aria-pressed={hasCar === false && hasBike !== true}
+                        className={hasCar === false && hasBike !== true ? 'active' : ''}
+                        disabled={w.status === 'dismissed' || profileSaving}
+                        onClick={() => {
+                          setHasCar(false)
+                          setHasBike(false)
+                          void saveProfile({ hasCar: false, hasBike: false })
+                        }}
+                      >
+                        {t('None')}
+                      </button>
                     </div>,
                   ],
                   ['Phone', details?.phone],

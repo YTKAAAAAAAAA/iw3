@@ -17,7 +17,36 @@ const isISODate = (value: string) => {
 export async function GET(request: Request, { params }: RouteContext) {
   if (!await getSession()) return jsonError(401, 'Authentication required.')
   const { slug } = await params
-  const date = new URL(request.url).searchParams.get('date')
+  const search = new URL(request.url).searchParams
+  /* ?from=&to= answers the month calendar: how many photos each day has, in
+     one request instead of one per day. */
+  const from = search.get('from')
+  const to = search.get('to')
+  if (from !== null || to !== null) {
+    if (!from || !to || !isISODate(from) || !isISODate(to) || from > to
+      || Date.parse(to) - Date.parse(from) > 62 * 86_400_000) {
+      return jsonError(400, 'A valid date range of at most 62 days is required.')
+    }
+    try {
+      const counts = await withDb(async db => {
+        const vacancy = await db.query<{ id: number }>('SELECT id FROM vacancy WHERE slug = $1', [slug])
+        if (!vacancy.rows[0]) return null
+        const { rows } = await db.query<{ date: string; photos: number }>(`
+          SELECT work_date::text AS date, count(*)::int AS photos
+          FROM vacancy_workday_photo
+          WHERE vacancy_id = $1 AND work_date BETWEEN $2::date AND $3::date
+          GROUP BY work_date
+        `, [vacancy.rows[0].id, from, to])
+        return Object.fromEntries(rows.map(row => [row.date, row.photos]))
+      })
+      if (!counts) return jsonError(404, 'Vacancy not found.')
+      return NextResponse.json({ counts }, { headers: { 'Cache-Control': 'private, no-store' } })
+    } catch (error) {
+      console.error('Failed to count workday photos.', error)
+      return jsonError(500, 'Could not load workday photos.')
+    }
+  }
+  const date = search.get('date')
   if (!date || !isISODate(date)) return jsonError(400, 'A valid work date is required.')
 
   try {
